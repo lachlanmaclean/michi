@@ -1,4 +1,4 @@
-export type CardPreset = '3x3' | '4x2' | '2x2' | 'custom';
+export type CardPreset = '3x3' | '4x2' | '2x2' | '3x4' | 'custom';
 
 export interface GridConfig {
   rows: number;
@@ -85,4 +85,5 @@ export const GRID_PRESETS: Record<Exclude<CardPreset, 'custom'>, { rows: number;
   '3x3': { rows: 3, cols: 3 },
   '4x2': { rows: 4, cols: 2 },
   '2x2': { rows: 2, cols: 2 },
+  '3x4': { rows: 3, cols: 4 },
 };
