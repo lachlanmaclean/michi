@@ -18,7 +18,7 @@ function AppShell() {
     <div className="grid h-screen grid-cols-[280px_1fr_300px] grid-rows-[auto_1fr] bg-background text-foreground">
       <header className="col-span-3 flex items-center gap-2 border-b border-border px-6 py-3">
         <LayoutGrid className="size-5 text-primary" />
-        <h1 className="text-lg font-semibold tracking-tight">michi</h1>
+        <h1 className="text-lg font-semibold tracking-tight">Bindermon</h1>
         <span className="text-sm text-muted-foreground">Pokémon Binder Creator</span>
         <div className="ml-auto flex items-center gap-2">
           <a

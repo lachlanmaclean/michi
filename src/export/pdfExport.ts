@@ -340,7 +340,7 @@ function sourceKey(source: ImageSource): string {
   return source.kind === 'upload' ? `upload:${source.dataUrl}` : `url:${source.url}`;
 }
 
-export function downloadPdf(bytes: Uint8Array, fileName = 'michi-binder.pdf') {
+export function downloadPdf(bytes: Uint8Array, fileName = 'bindermon-binder.pdf') {
   const blob = new Blob([bytes.slice().buffer], { type: 'application/pdf' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
