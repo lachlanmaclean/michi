@@ -47,7 +47,7 @@ function AppShell() {
         </div>
       )}
 
-      <aside className="overflow-y-auto border-r border-border px-6 py-4 flex flex-col gap-6">
+      <aside className="overflow-y-auto border-r border-border bg-sidebar px-6 py-4 flex flex-col gap-6">
         <GridConfigPanel />
         <SearchFilterPanel />
       </aside>
@@ -57,7 +57,7 @@ function AppShell() {
         <BinderPageView page={activePage} key={activePage.id} />
       </main>
 
-      <aside className="overflow-y-auto border-l border-border px-6 py-4 flex flex-col">
+      <aside className="overflow-y-auto border-l border-border bg-sidebar px-6 py-4 flex flex-col">
         <ExportPanel />
         <footer className="mt-6 pt-4 border-t border-border text-xs text-muted-foreground text-center">
           Not affiliated with, endorsed, sponsored, or specifically approved by The Pokémon
