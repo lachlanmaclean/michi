@@ -23,9 +23,20 @@ async function fetchImageBytes(source: ImageSource): Promise<{ bytes: Uint8Array
     if (!res.ok) throw new Error(`Failed to fetch image URL (${res.status}): ${source.url}`);
     bytes = new Uint8Array(await res.arrayBuffer());
   }
-  // Detect via magic bytes: PNG starts with 89 50 4E 47, JPEG starts with FF D8
-  const kind = bytes[0] === 0x89 && bytes[1] === 0x50 ? 'png' : 'jpg';
-  return { bytes, kind };
+  // Detect via magic bytes: PNG starts with 89 50 4E 47, JPEG starts with FF D8.
+  // pdf-lib can only embed PNG/JPEG — anything else (e.g. webp) must fail
+  // loudly here rather than being silently misdetected as JPEG, which would
+  // otherwise produce a blank/corrupt page with no visible error.
+  const isPng = bytes[0] === 0x89 && bytes[1] === 0x50;
+  const isJpg = bytes[0] === 0xff && bytes[1] === 0xd8;
+  if (!isPng && !isJpg) {
+    throw new Error(
+      `Unsupported image format (only PNG/JPEG can be embedded in the PDF): ${
+        source.kind === 'upload' ? source.fileName : source.url
+      }`
+    );
+  }
+  return { bytes, kind: isPng ? 'png' : 'jpg' };
 }
 
 export interface ExportError {
@@ -59,7 +70,6 @@ export function describeOversizedPlacements(binder: Binder, settings: ExportSett
 export async function exportBinderToPdf(binder: Binder, settings: ExportSettings): Promise<ExportResult> {
   const { w: pageWidth, h: pageHeight } = resolvePageSizePt(settings);
   const { printCols, printRows } = printGridDims(settings);
-  const bleedPt = mmToPt(settings.bleedMm);
   const cropColor = hexToRgb(settings.cropMarkColor);
   const cardEdgeColor = hexToRgb(settings.cardEdgeColor);
   const safeAreaInsetPt = mmToPt(SAFE_AREA_INSET_MM);
@@ -70,7 +80,7 @@ export async function exportBinderToPdf(binder: Binder, settings: ExportSettings
   const pitchX = CARD_WIDTH_PT + spacingXPt;
   const pitchY = CARD_HEIGHT_PT + spacingYPt;
 
-  const items = flowPackPlacements(binder, printCols, printRows);
+  const items = flowPackPlacements(binder, printCols, printRows, settings.includePokemonCards);
   const numPrintPages = countPrintPages(items);
 
   // Grid block width/height is cards-plus-internal-spacing (no trailing
@@ -90,15 +100,21 @@ export async function exportBinderToPdf(binder: Binder, settings: ExportSettings
     return { cutX, cutY };
   }
 
-  function drawCropMarks(page: PDFPage, row: number, col: number) {
+  // row/col here address a print-unit's top-left cell; unitCols/unitRows let
+  // a combined 2-card unit draw its guides around its OUTER perimeter only
+  // (no line through the shared boundary between the two cards) instead of
+  // per individual card.
+  function drawCropMarks(page: PDFPage, row: number, col: number, unitCols: number, unitRows: number) {
     const { cutX, cutY } = cutRectFor(row, col);
+    const unitWidth = unitCols * CARD_WIDTH_PT;
+    const unitHeight = unitRows * CARD_HEIGHT_PT;
     const markLength = 6;
     const offset = 2;
     const corners = [
       { x: cutX, y: cutY }, // bottom-left
-      { x: cutX + CARD_WIDTH_PT, y: cutY }, // bottom-right
-      { x: cutX, y: cutY + CARD_HEIGHT_PT }, // top-left
-      { x: cutX + CARD_WIDTH_PT, y: cutY + CARD_HEIGHT_PT }, // top-right
+      { x: cutX + unitWidth, y: cutY }, // bottom-right
+      { x: cutX, y: cutY + unitHeight }, // top-left
+      { x: cutX + unitWidth, y: cutY + unitHeight }, // top-right
     ];
     const dirs = [
       { dx: -1, dy: -1 },
@@ -125,22 +141,22 @@ export async function exportBinderToPdf(binder: Binder, settings: ExportSettings
     });
   }
 
-  function drawCardEdge(page: PDFPage, row: number, col: number) {
+  function drawCardEdge(page: PDFPage, row: number, col: number, unitCols: number, unitRows: number) {
     const { cutX, cutY } = cutRectFor(row, col);
     // Straight 90° corners (not rounded to the physical card radius) to
     // match Proxxied's cut-line style — this is a cut/registration guide,
     // not a preview of the card's actual rounded corners.
-    drawRoundedRectStroke(page, cutX, cutY, CARD_WIDTH_PT, CARD_HEIGHT_PT, 0, cardEdgeColor, 1);
+    drawRoundedRectStroke(page, cutX, cutY, unitCols * CARD_WIDTH_PT, unitRows * CARD_HEIGHT_PT, 0, cardEdgeColor, 1);
   }
 
-  function drawSafeArea(page: PDFPage, row: number, col: number) {
+  function drawSafeArea(page: PDFPage, row: number, col: number, unitCols: number, unitRows: number) {
     const { cutX, cutY } = cutRectFor(row, col);
     drawRoundedRectStroke(
       page,
       cutX + safeAreaInsetPt,
       cutY + safeAreaInsetPt,
-      CARD_WIDTH_PT - 2 * safeAreaInsetPt,
-      CARD_HEIGHT_PT - 2 * safeAreaInsetPt,
+      unitCols * CARD_WIDTH_PT - 2 * safeAreaInsetPt,
+      unitRows * CARD_HEIGHT_PT - 2 * safeAreaInsetPt,
       0,
       cardEdgeColor,
       0.5
@@ -168,49 +184,64 @@ export async function exportBinderToPdf(binder: Binder, settings: ExportSettings
       }
     }
 
-    // Every item is a single card now — placements are pre-sliced into
-    // individual 1x1 cards before flowing (see flowPack.ts), so each print
-    // slot always draws exactly one card-sized, bleed-extended tile.
-    const { cutX, cutY } = cutRectFor(item.row, item.col);
-    const tileWidth = CARD_WIDTH_PT + 2 * bleedPt;
-    const tileHeight = CARD_HEIGHT_PT + 2 * bleedPt;
-    const tileX = cutX - bleedPt;
-    const tileY = cutY - bleedPt;
+    // Most items are a single card (placements are sliced into 1x1 cards
+    // before flowing — see flowPack.ts); a `combined` placement's item is
+    // instead a 2-card unit (spanCols/spanRows > 1) that must draw as one
+    // seamless tile with no cut line through its shared boundary.
+    // cutRectFor(row, col) gives a single card's bottom-left, so a
+    // multi-row unit's bottom-left is that of its BOTTOM-most row.
+    const { cutX, cutY } = cutRectFor(item.row + item.spanRows - 1, item.col);
+    const unitWidthPt = item.spanCols * CARD_WIDTH_PT;
+    const unitHeightPt = item.spanRows * CARD_HEIGHT_PT;
 
-    // Mirror the on-screen "cover" crop: scale the image to just cover the
-    // placement's FULL span, then apply the extra user zoom/pan on top,
-    // matching PlacementView. This card then draws a windowed slice of that
-    // same full-span image, offset by however many cards it sits in from
-    // the placement's own top-left — this is what lets a multi-card image
-    // print as individual cards that still line up seamlessly once cut and
-    // reassembled.
     const totalCols = item.placement.rect.colEnd - item.placement.rect.colStart + 1;
     const totalRows = item.placement.rect.rowEnd - item.placement.rect.rowStart + 1;
     const fullWidth = totalCols * CARD_WIDTH_PT;
     const fullHeight = totalRows * CARD_HEIGHT_PT;
-    const { scale, offsetX, offsetY } = item.placement.crop;
-    const coverScale = Math.max(fullWidth / img.width, fullHeight / img.height);
-    const renderedWidth = img.width * coverScale * scale;
-    const renderedHeight = img.height * coverScale * scale;
-    const rangeX = renderedWidth - fullWidth;
-    const rangeY = renderedHeight - fullHeight;
-    // Top-left of the full rendered image, relative to this card's own
-    // cut-line origin (tileX/tileY shifted back by its source offset within
-    // the placement).
-    const fullOriginX = tileX - item.sourceColOffset * CARD_WIDTH_PT - rangeX * offsetX;
-    // PDF y-axis grows upward; offsetY=0 means "top of image visible", which
-    // is the top of the drawn rect, i.e. the highest Y. Also account for
-    // this card's row offset within the placement.
-    const rowsBelowCard = totalRows - item.sourceRowOffset - 1;
-    const fullOriginY = tileY - rowsBelowCard * CARD_HEIGHT_PT - rangeY * (1 - offsetY);
 
-    pdfPage.pushOperators(...pushClipOperators(tileX, tileY, tileWidth, tileHeight));
+    let fullOriginX: number;
+    let fullOriginY: number;
+    let renderedWidth: number;
+    let renderedHeight: number;
+
+    if (item.placement.fitMode === 'fill') {
+      // Stretch to exactly fill the placement's full span on each axis
+      // independently (like CSS object-fit: fill) — no cropping, no
+      // pan/zoom. Used for pre-rendered card art that's already framed.
+      renderedWidth = fullWidth;
+      renderedHeight = fullHeight;
+      fullOriginX = cutX - item.sourceColOffset * CARD_WIDTH_PT;
+      const rowsBelowUnit = totalRows - item.sourceRowOffset - item.spanRows;
+      fullOriginY = cutY - rowsBelowUnit * CARD_HEIGHT_PT;
+    } else {
+      // Mirror the on-screen "cover" crop exactly: scale the image to just
+      // cover the placement's FULL span (no bleed margin — every card is
+      // strictly confined to its own trim-size box, so it can never
+      // visually overlap a neighboring card), then apply the user's
+      // pan/zoom on top, matching PlacementView. This unit then draws a
+      // windowed slice of that same full-span image, offset by however
+      // many cards it sits in from the placement's own top-left — this is
+      // what lets a multi-card image print as individual cards (or one
+      // combined unit) that still line up seamlessly once cut and
+      // reassembled.
+      const { scale, offsetX, offsetY } = item.placement.crop;
+      const coverScale = Math.max(fullWidth / img.width, fullHeight / img.height);
+      renderedWidth = img.width * coverScale * scale;
+      renderedHeight = img.height * coverScale * scale;
+      const rangeX = renderedWidth - fullWidth;
+      const rangeY = renderedHeight - fullHeight;
+      fullOriginX = cutX - item.sourceColOffset * CARD_WIDTH_PT - rangeX * offsetX;
+      const rowsBelowUnit = totalRows - item.sourceRowOffset - item.spanRows;
+      fullOriginY = cutY - rowsBelowUnit * CARD_HEIGHT_PT - rangeY * (1 - offsetY);
+    }
+
+    pdfPage.pushOperators(...pushClipOperators(cutX, cutY, unitWidthPt, unitHeightPt));
     pdfPage.drawImage(img, { x: fullOriginX, y: fullOriginY, width: renderedWidth, height: renderedHeight });
     pdfPage.pushOperators(...popClipOperators());
 
-    if (settings.showCropMarks) drawCropMarks(pdfPage, item.row, item.col);
-    if (settings.showCardEdge) drawCardEdge(pdfPage, item.row, item.col);
-    if (settings.showSafeArea) drawSafeArea(pdfPage, item.row, item.col);
+    if (settings.showCropMarks) drawCropMarks(pdfPage, item.row, item.col, item.spanCols, item.spanRows);
+    if (settings.showCardEdge) drawCardEdge(pdfPage, item.row, item.col, item.spanCols, item.spanRows);
+    if (settings.showSafeArea) drawSafeArea(pdfPage, item.row, item.col, item.spanCols, item.spanRows);
   }
 
   const bytes = await pdfDoc.save();

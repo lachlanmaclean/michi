@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAppState } from '@/state/AppStateContext';
 import type { BinderPage, CellRect, ImagePlacement } from '@/types/binder';
-import { clampRectToGrid, normalizeRect, rectContains, rectsOverlap } from '@/utils/grid';
+import { clampRectToGrid, isCombinablePair, normalizeRect, rectContains, rectsOverlap } from '@/utils/grid';
 import { ImageAssignDialog } from './ImageAssignDialog';
 import { PlacementView } from './PlacementView';
 import { Button } from '@/components/ui/button';
-import { Check, Pencil, Trash2, X, ZoomIn, ZoomOut } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { Check, Combine, Pencil, Trash2, X, ZoomIn, ZoomOut } from 'lucide-react';
 
 // Pokemon card aspect ratio is fixed at 2.5:3.5 (portrait), independent of
 // grid rows/cols — cells never stretch to a different shape.
@@ -19,6 +20,7 @@ type ResizeHandle = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
 export function BinderPageView({ page }: { page: BinderPage }) {
   const { dispatch } = useAppState();
   const gridRef = useRef<HTMLDivElement>(null);
+  const toolbarRef = useRef<HTMLDivElement>(null);
   const [dragAnchor, setDragAnchor] = useState<{ row: number; col: number } | null>(null);
   const [selectionRect, setSelectionRect] = useState<CellRect | null>(null);
   const [dialogRect, setDialogRect] = useState<CellRect | null>(null);
@@ -41,6 +43,35 @@ export function BinderPageView({ page }: { page: BinderPage }) {
       setDraftOffset(null);
     }
   }, [page.placements, selectedId]);
+
+  useEffect(() => {
+    if (!selectedId) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        if (draftOffset) confirmPan();
+        else setSelectedId(null);
+      }
+    }
+    // Any pointerdown outside the grid container (which handles its own
+    // deselect-on-click-inside logic) deselects too — e.g. clicking the
+    // sidebar, header, or blank page background.
+    function onDocPointerDown(e: PointerEvent) {
+      const target = e.target as Node;
+      const insideGrid = gridRef.current?.contains(target);
+      const insideToolbar = toolbarRef.current?.contains(target);
+      if (!insideGrid && !insideToolbar) {
+        if (draftOffset) confirmPan();
+        else setSelectedId(null);
+      }
+    }
+    document.addEventListener('keydown', onKeyDown);
+    document.addEventListener('pointerdown', onDocPointerDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      document.removeEventListener('pointerdown', onDocPointerDown);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId, draftOffset]);
 
   function selectPlacement(id: string) {
     if (id !== selectedId) setDraftOffset(null);
@@ -177,41 +208,64 @@ export function BinderPageView({ page }: { page: BinderPage }) {
   return (
     <div className="flex-1 overflow-auto flex items-start justify-center p-6">
       <div className="flex flex-col items-center gap-3">
-        {selectedPlacement && (
-          <div className="flex items-center gap-1 rounded-lg border border-border bg-card px-2 py-1.5 shadow-sm">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-7"
-              title="Zoom out"
-              onClick={() =>
-                dispatch({
-                  type: 'UPDATE_CROP',
-                  pageId: page.id,
-                  placementId: selectedPlacement.id,
-                  crop: { ...selectedPlacement.crop, scale: Math.max(1, selectedPlacement.crop.scale - 0.1) },
-                })
-              }
-            >
-              <ZoomOut className="size-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-7"
-              title="Zoom in"
-              onClick={() =>
-                dispatch({
-                  type: 'UPDATE_CROP',
-                  pageId: page.id,
-                  placementId: selectedPlacement.id,
-                  crop: { ...selectedPlacement.crop, scale: Math.min(4, selectedPlacement.crop.scale + 0.1) },
-                })
-              }
-            >
-              <ZoomIn className="size-4" />
-            </Button>
-            <div className="w-px h-5 bg-border mx-1" />
+        <div className="h-11 flex items-center">
+          {selectedPlacement && (
+          <div ref={toolbarRef} className="flex items-center gap-1 rounded-lg border border-border bg-card px-2 py-1.5 shadow-sm">
+            {selectedPlacement.fitMode !== 'fill' && (
+              <>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-7"
+                  title="Zoom out"
+                  onClick={() =>
+                    dispatch({
+                      type: 'UPDATE_CROP',
+                      pageId: page.id,
+                      placementId: selectedPlacement.id,
+                      crop: { ...selectedPlacement.crop, scale: Math.max(1, selectedPlacement.crop.scale - 0.1) },
+                    })
+                  }
+                >
+                  <ZoomOut className="size-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-7"
+                  title="Zoom in"
+                  onClick={() =>
+                    dispatch({
+                      type: 'UPDATE_CROP',
+                      pageId: page.id,
+                      placementId: selectedPlacement.id,
+                      crop: { ...selectedPlacement.crop, scale: Math.min(4, selectedPlacement.crop.scale + 0.1) },
+                    })
+                  }
+                >
+                  <ZoomIn className="size-4" />
+                </Button>
+                <div className="w-px h-5 bg-border mx-1" />
+              </>
+            )}
+            {isCombinablePair(selectedPlacement.rect) && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className={cn('size-7', selectedPlacement.combined && 'text-primary')}
+                title={selectedPlacement.combined ? 'Un-combine' : 'Combine into one seamless card'}
+                onClick={() =>
+                  dispatch({
+                    type: 'SET_COMBINED',
+                    pageId: page.id,
+                    placementId: selectedPlacement.id,
+                    combined: !selectedPlacement.combined,
+                  })
+                }
+              >
+                <Combine className="size-4" />
+              </Button>
+            )}
             <Button
               variant="ghost"
               size="icon"
@@ -254,7 +308,8 @@ export function BinderPageView({ page }: { page: BinderPage }) {
               </>
             )}
           </div>
-        )}
+          )}
+        </div>
 
         <div
           ref={gridRef}
@@ -320,11 +375,6 @@ export function BinderPageView({ page }: { page: BinderPage }) {
             />
           )}
         </div>
-
-        <p className="text-xs text-muted-foreground">
-          Drag to place an image. Click a placed image to select it — drag corners to resize, drag
-          the image to pan, scroll to zoom. Panning requires confirming with the checkmark.
-        </p>
       </div>
 
       {dialogRect && (

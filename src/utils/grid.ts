@@ -22,6 +22,13 @@ export function rectContains(rect: CellRect, row: number, col: number): boolean 
   return row >= rect.rowStart && row <= rect.rowEnd && col >= rect.colStart && col <= rect.colEnd;
 }
 
+/** True for a rect that's exactly 1x2 or 2x1 — the only shapes eligible for the "combine" seamless-tile feature. */
+export function isCombinablePair(rect: CellRect): boolean {
+  const spanCols = rect.colEnd - rect.colStart + 1;
+  const spanRows = rect.rowEnd - rect.rowStart + 1;
+  return (spanCols === 2 && spanRows === 1) || (spanCols === 1 && spanRows === 2);
+}
+
 export function clampRectToGrid(rect: CellRect, rows: number, cols: number): CellRect {
   return {
     rowStart: Math.max(0, Math.min(rect.rowStart, rows - 1)),

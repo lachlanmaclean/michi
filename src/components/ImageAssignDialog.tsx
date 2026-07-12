@@ -1,7 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { v4 as uuid } from 'uuid';
-import { DEFAULT_CROP, type CellRect, type ImagePlacement, type ImageSource } from '@/types/binder';
+import { DEFAULT_CROP, type CellRect, type FitMode, type ImagePlacement, type ImageSource } from '@/types/binder';
 import { fileToDataUrl } from '@/utils/imageLoad';
+import { searchTcgdexCards, tcgdexImageUrl, tcgdexThumbnailUrl, type TcgdexCardBrief } from '@/utils/tcgdex';
+import { useAppState } from '@/state/AppStateContext';
 import {
   Dialog,
   DialogContent,
@@ -11,8 +13,9 @@ import {
 } from '@/components/ui/dialog';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
+import { Loader2, Search } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface Props {
   rect: CellRect;
@@ -23,27 +26,89 @@ interface Props {
 }
 
 export function ImageAssignDialog({ rect, existingPlacement, onConfirm, onRemove, onCancel }: Props) {
-  const [tab, setTab] = useState<'upload' | 'url'>(
-    existingPlacement?.source.kind === 'url' ? 'url' : 'upload'
-  );
-  const [url, setUrl] = useState(existingPlacement?.source.kind === 'url' ? existingPlacement.source.url : '');
+  const { state } = useAppState();
+  const spanCols = rect.colEnd - rect.colStart + 1;
+  const spanRows = rect.rowEnd - rect.rowStart + 1;
+  // Card search returns a single pre-rendered card image, which only makes
+  // sense for a plain 1x1 slot — a multi-cell span needs one image spread
+  // across cards, which search can't provide.
+  const canSearch = spanCols === 1 && spanRows === 1;
+  const [tab, setTab] = useState<'search' | 'upload'>(canSearch ? 'search' : 'upload');
   const [preview, setPreview] = useState<ImageSource | null>(existingPlacement?.source ?? null);
+  const [fitMode, setFitMode] = useState<FitMode>(existingPlacement?.fitMode ?? 'cover');
   const [error, setError] = useState<string | null>(null);
+
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<TcgdexCardBrief[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  useEffect(() => {
+    clearTimeout(searchTimer.current);
+    if (!query.trim()) {
+      setResults([]);
+      setSearching(false);
+      return;
+    }
+    setSearching(true);
+    searchTimer.current = setTimeout(async () => {
+      try {
+        const cards = (await searchTcgdexCards(query.trim(), state.searchSetId ?? undefined)).filter((c) =>
+          tcgdexImageUrl(c)
+        );
+        // Exactly one match — skip the preview/Assign step and place it
+        // immediately, closing the dialog.
+        if (cards.length === 1) {
+          confirmCard(cards[0]);
+          return;
+        }
+        setResults(cards);
+      } catch {
+        setResults([]);
+      } finally {
+        setSearching(false);
+      }
+    }, 400);
+    return () => clearTimeout(searchTimer.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query, state.searchSetId]);
 
   async function handleFile(file: File | undefined) {
     if (!file) return;
     try {
       const dataUrl = await fileToDataUrl(file);
       setPreview({ kind: 'upload', dataUrl, fileName: file.name });
+      setFitMode('cover');
       setError(null);
     } catch {
       setError('Could not read that file.');
     }
   }
 
-  function handleUrlChange(value: string) {
-    setUrl(value);
-    setPreview(value ? { kind: 'url', url: value } : null);
+  function selectCard(card: TcgdexCardBrief) {
+    const imageUrl = tcgdexImageUrl(card);
+    if (!imageUrl) return;
+    setSelectedCardId(card.id);
+    setPreview({ kind: 'url', url: imageUrl });
+    // Pre-rendered card art is already framed correctly — stretch to fill
+    // exactly, no cropping/pan/zoom.
+    setFitMode('fill');
+    setError(null);
+  }
+
+  /** Places a card immediately, skipping the preview/Assign step — used when a search has exactly one match. */
+  function confirmCard(card: TcgdexCardBrief) {
+    const imageUrl = tcgdexImageUrl(card);
+    if (!imageUrl) return;
+    onConfirm({
+      id: existingPlacement?.id ?? uuid(),
+      rect,
+      source: { kind: 'url', url: imageUrl },
+      crop: DEFAULT_CROP,
+      fitMode: 'fill',
+      combined: existingPlacement?.combined ?? false,
+    });
   }
 
   function confirm() {
@@ -51,19 +116,20 @@ export function ImageAssignDialog({ rect, existingPlacement, onConfirm, onRemove
       setError('Choose an image first.');
       return;
     }
-    // Swapping the image source on an existing placement resets crop,
-    // since scale/offset were tuned for the old image's framing.
-    const cropChanged = existingPlacement && preview !== existingPlacement.source;
+    // Swapping the image source resets crop, since scale/offset were tuned
+    // for the old image's framing.
+    const sourceChanged = !existingPlacement || preview !== existingPlacement.source;
     onConfirm({
       id: existingPlacement?.id ?? uuid(),
       rect,
       source: preview,
-      crop: existingPlacement && !cropChanged ? existingPlacement.crop : DEFAULT_CROP,
+      crop: existingPlacement && !sourceChanged ? existingPlacement.crop : DEFAULT_CROP,
+      fitMode,
+      combined: existingPlacement?.combined ?? false,
     });
   }
 
-  const spanCols = rect.colEnd - rect.colStart + 1;
-  const spanRows = rect.rowEnd - rect.rowStart + 1;
+  const previewSrc = preview ? (preview.kind === 'upload' ? preview.dataUrl : preview.url) : null;
 
   return (
     <Dialog open onOpenChange={(open) => !open && onCancel()}>
@@ -74,35 +140,71 @@ export function ImageAssignDialog({ rect, existingPlacement, onConfirm, onRemove
           </DialogTitle>
         </DialogHeader>
 
-        <Tabs value={tab} onValueChange={(v) => setTab(v as 'upload' | 'url')}>
-          <TabsList className="grid w-full grid-cols-2">
+        <Tabs value={tab} onValueChange={(v) => setTab(v as 'search' | 'upload')}>
+          <TabsList className={cn('grid w-full', canSearch ? 'grid-cols-2' : 'grid-cols-1')}>
+            {canSearch && <TabsTrigger value="search">Search</TabsTrigger>}
             <TabsTrigger value="upload">Upload</TabsTrigger>
-            <TabsTrigger value="url">Image URL</TabsTrigger>
           </TabsList>
+
+          {canSearch && (
+            <TabsContent value="search" className="pt-2 flex flex-col gap-2">
+              <div className="relative">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+                <Input
+                  type="text"
+                  placeholder="Search Pokémon cards…"
+                  className="pl-8"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                />
+              </div>
+
+              {searching && (
+                <div className="flex items-center justify-center py-6 text-muted-foreground">
+                  <Loader2 className="size-4 animate-spin" />
+                </div>
+              )}
+
+              {!searching && query.trim() && results.length === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-4">No cards found.</p>
+              )}
+
+              {!searching && results.length > 0 && (
+                <div className="grid grid-cols-4 gap-2 max-h-64 overflow-y-auto">
+                  {results.map((card) => (
+                    <button
+                      key={card.id}
+                      type="button"
+                      onClick={() => selectCard(card)}
+                      className={cn(
+                        'rounded-md overflow-hidden border-2 transition-colors',
+                        selectedCardId === card.id
+                          ? 'border-primary'
+                          : 'border-transparent hover:border-primary/60'
+                      )}
+                      title={card.name}
+                    >
+                      <img
+                        src={tcgdexThumbnailUrl(card) ?? tcgdexImageUrl(card)!}
+                        alt={card.name}
+                        className="w-full aspect-[2.5/3.5] object-cover bg-muted"
+                        loading="lazy"
+                      />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </TabsContent>
+          )}
+
           <TabsContent value="upload" className="pt-2">
             <Input type="file" accept="image/*" onChange={(e) => handleFile(e.target.files?.[0])} />
           </TabsContent>
-          <TabsContent value="url" className="pt-2 flex flex-col gap-1.5">
-            <Label htmlFor="image-url" className="sr-only">
-              Image URL
-            </Label>
-            <Input
-              id="image-url"
-              type="text"
-              placeholder="https://example.com/image.png"
-              value={url}
-              onChange={(e) => handleUrlChange(e.target.value)}
-            />
-          </TabsContent>
         </Tabs>
 
-        {preview && (
+        {previewSrc && (
           <div className="rounded-md overflow-hidden max-h-52 border border-border">
-            <img
-              src={preview.kind === 'upload' ? preview.dataUrl : preview.url}
-              alt="preview"
-              className="w-full h-full object-contain bg-muted"
-            />
+            <img src={previewSrc} alt="preview" className="w-full h-full object-contain bg-muted" />
           </div>
         )}
 

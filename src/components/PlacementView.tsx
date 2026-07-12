@@ -54,14 +54,17 @@ export function PlacementView({
   const containerWidthPx = spanWidthPx + (spanCols - 1) * gapPx;
   const containerHeightPx = spanHeightPx + (spanRows - 1) * gapPx;
 
+  const isFill = placement.fitMode === 'fill';
+
   const { scale }: CropTransform = placement.crop;
   const displayOffsetX = draftOffset?.x ?? placement.crop.offsetX;
   const displayOffsetY = draftOffset?.y ?? placement.crop.offsetY;
 
   // Explicit pixel sizing (rather than CSS object-fit: cover) so the
-  // on-screen render matches the pan-range math exactly: at scale=1 the
-  // image just covers the (gap-less) card content area, and any excess on
-  // one axis (from an aspect-ratio mismatch) is what's actually pannable.
+  // on-screen render matches the pan-range math exactly, and matches the
+  // PDF export exactly (no bleed margin — every card is strictly confined
+  // to its own trim-size box, so cards can never visually overlap a
+  // neighboring card).
   const coverScale = naturalSize
     ? Math.max(spanWidthPx / naturalSize.w, spanHeightPx / naturalSize.h)
     : 0;
@@ -69,6 +72,12 @@ export function PlacementView({
   const renderedHeight = naturalSize ? naturalSize.h * coverScale * scale : spanHeightPx;
 
   function onImagePointerDown(e: React.PointerEvent) {
+    // Pre-rendered card art (fill mode) is stretched to fit exactly, with no
+    // pan/zoom to perform.
+    if (isFill) {
+      onSelect(e);
+      return;
+    }
     if (!selected) {
       onSelect(e);
       return;
@@ -103,7 +112,7 @@ export function PlacementView({
   }
 
   function onWheel(e: React.WheelEvent) {
-    if (!selected) return;
+    if (!selected || isFill) return;
     e.preventDefault();
     e.stopPropagation();
     const delta = -e.deltaY * 0.001;
@@ -118,6 +127,41 @@ export function PlacementView({
   const imageLeft = (containerWidthPx - renderedWidth) / 2 - (displayOffsetX - 0.5) * (renderedWidth - spanWidthPx);
   const imageTop = (containerHeightPx - renderedHeight) / 2 - (displayOffsetY - 0.5) * (renderedHeight - spanHeightPx);
 
+  function renderImage(tileLeft: number, tileTop: number, isFirst: boolean) {
+    if (isFill) {
+      return (
+        <img
+          src={src}
+          alt=""
+          draggable={false}
+          className="absolute inset-0 w-full h-full object-fill pointer-events-none select-none"
+        />
+      );
+    }
+    return (
+      <img
+        src={src}
+        alt=""
+        draggable={false}
+        onLoad={
+          isFirst
+            ? (e) => {
+                const el = e.currentTarget;
+                setNaturalSize({ w: el.naturalWidth, h: el.naturalHeight });
+              }
+            : undefined
+        }
+        className="absolute max-w-none pointer-events-none select-none"
+        style={{
+          width: renderedWidth,
+          height: renderedHeight,
+          left: imageLeft - tileLeft,
+          top: imageTop - tileTop,
+        }}
+      />
+    );
+  }
+
   return (
     <div
       ref={containerRef}
@@ -127,51 +171,48 @@ export function PlacementView({
         gridColumn: `${placement.rect.colStart + 1} / ${placement.rect.colEnd + 2}`,
         gridTemplateColumns: `repeat(${spanCols}, ${cardWidthPx}px)`,
         gridTemplateRows: `repeat(${spanRows}, ${cardHeightPx}px)`,
-        gap: gapPx,
+        gap: placement.combined ? 0 : gapPx,
       }}
       onPointerDown={onImagePointerDown}
       onPointerMove={onImagePointerMove}
       onPointerUp={onImagePointerUp}
       onWheel={onWheel}
     >
-      {Array.from({ length: spanRows }).map((_, r) =>
-        Array.from({ length: spanCols }).map((_, c) => {
-          // This card's offset within the card-content box (cards tile
-          // edge-to-edge here, ignoring gaps, matching the crop math).
-          const tileLeft = c * cardWidthPx;
-          const tileTop = r * cardHeightPx;
-          return (
-            <div
-              key={`${r}-${c}`}
-              className={cn(
-                'relative rounded-md overflow-hidden cursor-pointer border-2 transition-colors',
-                selected ? 'border-primary z-10' : 'border-transparent hover:border-primary/60'
-              )}
-              style={{ width: cardWidthPx, height: cardHeightPx }}
-            >
-              <img
-                src={src}
-                alt=""
-                draggable={false}
-                onLoad={
-                  r === 0 && c === 0
-                    ? (e) => {
-                        const el = e.currentTarget;
-                        setNaturalSize({ w: el.naturalWidth, h: el.naturalHeight });
-                      }
-                    : undefined
-                }
-                className="absolute max-w-none pointer-events-none select-none"
-                style={{
-                  width: renderedWidth,
-                  height: renderedHeight,
-                  left: imageLeft - tileLeft,
-                  top: imageTop - tileTop,
-                }}
-              />
-            </div>
-          );
-        })
+      {placement.combined ? (
+        // Combined: one seamless tile spanning the whole rect, no internal
+        // gap/border between the two cards — they're meant to print and be
+        // handled as a single double-wide/double-tall card, not two cards
+        // that happen to share an image.
+        <div
+          className={cn(
+            'relative rounded-md overflow-hidden cursor-pointer border-2 transition-colors',
+            selected ? 'border-primary z-10' : 'border-transparent hover:border-primary/60'
+          )}
+          style={{ gridColumn: `1 / -1`, gridRow: `1 / -1` }}
+        >
+          {renderImage(0, 0, true)}
+        </div>
+      ) : (
+        Array.from({ length: spanRows }).map((_, r) =>
+          Array.from({ length: spanCols }).map((_, c) => {
+            // This card's offset within the card-content box (cards tile
+            // edge-to-edge here, ignoring gaps, matching the crop math).
+            const tileLeft = c * cardWidthPx;
+            const tileTop = r * cardHeightPx;
+            return (
+              <div
+                key={`${r}-${c}`}
+                className={cn(
+                  'relative rounded-md overflow-hidden cursor-pointer border-2 transition-colors',
+                  selected ? 'border-primary z-10' : 'border-transparent hover:border-primary/60'
+                )}
+                style={{ width: cardWidthPx, height: cardHeightPx }}
+              >
+                {renderImage(tileLeft, tileTop, r === 0 && c === 0)}
+              </div>
+            );
+          })
+        )
       )}
 
       {selected && (

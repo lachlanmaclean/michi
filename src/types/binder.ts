@@ -33,11 +33,27 @@ export interface CropTransform {
 
 export const DEFAULT_CROP: CropTransform = { scale: 1, offsetX: 0.5, offsetY: 0.5 };
 
+/**
+ * 'cover' crops/pans/zooms the source image to fill the span (the default,
+ * used for uploads). 'fill' stretches the image to exactly fill the span on
+ * each axis independently, with no cropping or pan/zoom — used for
+ * pre-rendered card art from Search, which is already framed correctly and
+ * would otherwise get its edges cut off by cover-cropping.
+ */
+export type FitMode = 'cover' | 'fill';
+
 export interface ImagePlacement {
   id: string;
   rect: CellRect;
   source: ImageSource;
   crop: CropTransform;
+  fitMode: FitMode;
+  /**
+   * Only meaningful when rect is exactly 1x2 or 2x1. Merges the pair into
+   * one seamless double-wide/tall printed card with no internal cut line,
+   * instead of two individually-cut cards sharing one image.
+   */
+  combined: boolean;
 }
 
 export interface BinderPage {
@@ -60,7 +76,6 @@ export interface ExportSettings {
   /** Only used when pageSize === 'Custom'. */
   customWidthMm: number;
   customHeightMm: number;
-  bleedMm: number;
   cropMarkColor: string;
   showCropMarks: boolean;
   cardEdgeColor: string;
@@ -72,12 +87,21 @@ export interface ExportSettings {
   /** Nudges the whole print grid on the page, e.g. to compensate for a printer's margin drift. */
   cardOffsetXMm: number;
   cardOffsetYMm: number;
+  /**
+   * Whether cards added via card Search (pre-rendered Pokémon TCG art) are
+   * included in the exported PDF. When false, they're skipped entirely
+   * (never reserving a print slot) — useful for treating them as
+   * planning-only placeholders while still printing your own uploads.
+   */
+  includePokemonCards: boolean;
 }
 
 export interface AppState {
   binder: Binder;
   activePageId: string;
   exportSettings: ExportSettings;
+  /** Set filter applied to card Search (both the sidebar widget and quick-search) — null means search all sets. */
+  searchSetId: string | null;
   schemaVersion: number;
 }
 

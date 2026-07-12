@@ -20,7 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { LayoutGrid, Droplet, Move, Scan, Loader2 } from 'lucide-react';
+import { LayoutGrid, Move, Scan, Loader2 } from 'lucide-react';
 
 const PAGE_SIZES: PageSize[] = ['Letter', 'A4', 'Legal', 'A3', 'Custom'];
 const MM_PER_INCH = 25.4;
@@ -144,33 +144,6 @@ export function ExportPanel() {
             <Button variant="outline" className="w-full" onClick={swapOrientation}>
               Swap orientation
             </Button>
-          </AccordionContent>
-        </AccordionItem>
-
-        <AccordionItem value="bleed">
-          <AccordionTrigger>
-            <span className="flex items-center gap-2">
-              <Droplet className="size-4" />
-              Bleed
-            </span>
-          </AccordionTrigger>
-          <AccordionContent className="flex flex-col gap-4">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="bleed">Bleed width (mm)</Label>
-              <Input
-                id="bleed"
-                type="number"
-                min={0}
-                max={10}
-                step={0.5}
-                value={exportSettings.bleedMm}
-                onChange={(e) => update({ bleedMm: Number(e.target.value) })}
-              />
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Extends each card's artwork past its cut line so no white edge shows if the cut is
-              slightly off.
-            </p>
           </AccordionContent>
         </AccordionItem>
 
@@ -325,6 +298,21 @@ export function ExportPanel() {
           </AccordionContent>
         </AccordionItem>
       </Accordion>
+
+      <div className="flex items-center gap-2">
+        <Switch
+          id="include-pokemon-cards"
+          checked={exportSettings.includePokemonCards}
+          onCheckedChange={(checked) => update({ includePokemonCards: checked })}
+        />
+        <Label htmlFor="include-pokemon-cards" className="font-normal">
+          Include Pokémon cards
+        </Label>
+      </div>
+      <p className="text-xs text-muted-foreground -mt-2">
+        Cards added via card Search are excluded from the PDF when off — only your own uploaded
+        images print, and Search cards no longer take up a print slot.
+      </p>
 
       <p className="text-xs text-muted-foreground">
         Cards print at exact standard size (2.5" × 3.5"). Empty binder slots are never printed —

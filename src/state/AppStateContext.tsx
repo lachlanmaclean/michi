@@ -3,6 +3,7 @@ import { v4 as uuid } from 'uuid';
 import type { AppState, BinderPage, CellRect, CropTransform, GridConfig, ImagePlacement } from '../types/binder';
 import { loadInitialState, saveState, debounce } from './persistence';
 import { createDefaultPage } from './defaultState';
+import { isCombinablePair } from '../utils/grid';
 
 type Action =
   | { type: 'SET_GRID_CONFIG'; pageId: string; gridConfig: GridConfig; setAsDefault?: boolean }
@@ -14,7 +15,9 @@ type Action =
   | { type: 'REMOVE_IMAGE'; pageId: string; placementId: string }
   | { type: 'RESIZE_PLACEMENT'; pageId: string; placementId: string; rect: CellRect }
   | { type: 'UPDATE_CROP'; pageId: string; placementId: string; crop: CropTransform }
-  | { type: 'UPDATE_EXPORT_SETTINGS'; settings: Partial<AppState['exportSettings']> };
+  | { type: 'UPDATE_EXPORT_SETTINGS'; settings: Partial<AppState['exportSettings']> }
+  | { type: 'SET_SEARCH_SET'; setId: string | null }
+  | { type: 'SET_COMBINED'; pageId: string; placementId: string; combined: boolean };
 
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
@@ -80,7 +83,11 @@ function reducer(state: AppState, action: Action): AppState {
           : {
               ...p,
               placements: p.placements.map((pl) =>
-                pl.id === action.placementId ? { ...pl, rect: action.rect } : pl
+                pl.id === action.placementId
+                  ? // A resize that stops being an exact 1x2/2x1 pair can no
+                    // longer draw as one combined seamless tile.
+                    { ...pl, rect: action.rect, combined: pl.combined && isCombinablePair(action.rect) }
+                  : pl
               ),
             }
       );
@@ -101,6 +108,21 @@ function reducer(state: AppState, action: Action): AppState {
     }
     case 'UPDATE_EXPORT_SETTINGS':
       return { ...state, exportSettings: { ...state.exportSettings, ...action.settings } };
+    case 'SET_SEARCH_SET':
+      return { ...state, searchSetId: action.setId };
+    case 'SET_COMBINED': {
+      const pages = state.binder.pages.map((p) =>
+        p.id !== action.pageId
+          ? p
+          : {
+              ...p,
+              placements: p.placements.map((pl) =>
+                pl.id === action.placementId ? { ...pl, combined: action.combined } : pl
+              ),
+            }
+      );
+      return { ...state, binder: { ...state.binder, pages } };
+    }
     default:
       return state;
   }

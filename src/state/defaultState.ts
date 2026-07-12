@@ -1,7 +1,7 @@
 import { v4 as uuid } from 'uuid';
 import type { AppState, BinderPage } from '../types/binder';
 
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 7;
 
 export function createDefaultPage(): BinderPage {
   return {
@@ -21,11 +21,11 @@ export function createDefaultState(): AppState {
       pages: [page],
     },
     activePageId: page.id,
+    searchSetId: null,
     exportSettings: {
       pageSize: 'Letter',
       customWidthMm: 216,
       customHeightMm: 279,
-      bleedMm: 2,
       cropMarkColor: '#000000',
       showCropMarks: true,
       cardEdgeColor: '#22c55e',
@@ -35,6 +35,7 @@ export function createDefaultState(): AppState {
       cardSpacingYMm: 0,
       cardOffsetXMm: 0,
       cardOffsetYMm: 0,
+      includePokemonCards: true,
     },
     schemaVersion: SCHEMA_VERSION,
   };
