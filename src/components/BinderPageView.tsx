@@ -402,7 +402,7 @@ export function BinderPageView({ page, selectedId, onSelectedIdChange: setSelect
 
           {selectionRect && (
             <div
-              className="rounded-md border-2 border-primary bg-primary/25 pointer-events-none"
+              className="relative z-30 rounded-md border-2 border-primary bg-primary/25 pointer-events-none"
               style={{
                 gridRow: `${selectionRect.rowStart + 1} / ${selectionRect.rowEnd + 2}`,
                 gridColumn: `${selectionRect.colStart + 1} / ${selectionRect.colEnd + 2}`,
