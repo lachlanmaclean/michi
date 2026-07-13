@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { LayoutGrid, Search, FileDown, Grid3x3, Sparkles, Printer } from 'lucide-react';
+import { LayoutGrid, Search, FileDown, Grid3x3, Sparkles, Printer, Combine } from 'lucide-react';
 import { buttonVariants } from '@/components/ui/button';
 import {
   Accordion,
@@ -9,6 +9,12 @@ import {
 } from '@/components/ui/accordion';
 
 const FEATURES = [
+  {
+    icon: Combine,
+    title: 'Multi-pocket custom art',
+    description:
+      'Combine adjacent pockets into one seamless panel for hero cards, extended artwork, and Michi Method-style spreads.',
+  },
   {
     icon: Search,
     title: 'Search real card sets',
@@ -25,7 +31,7 @@ const FEATURES = [
     icon: Sparkles,
     title: 'Crop, zoom & position',
     description:
-      'Fine-tune every card image with pan, zoom, and combine tools so double-wide cards line up perfectly across pockets.',
+      'Fine-tune every card image with pan, zoom, and combine tools so artwork lines up perfectly across pockets.',
   },
   {
     icon: Printer,
@@ -39,15 +45,13 @@ const FEATURES = [
     description:
       'Generate a print-ready, multi-page PDF sized to Letter or A4 in one click — ready to take to any print shop.',
   },
-  {
-    icon: LayoutGrid,
-    title: 'Free, no signup',
-    description:
-      'Everything runs in your browser. No account, no watermark, no paywall — your binder stays on your device.',
-  },
 ];
 
 const FAQS = [
+  {
+    q: 'What is the Michi Method?',
+    a: 'The Michi Method is a popular way to design Pokémon binder pages where, instead of filling every pocket with a single card, you combine several pockets into one custom panel — a hero card, extended artwork, or a themed spread — mixed with regular single-card pockets and intentional negative space. Bindermon’s pocket-combining and crop tools are built specifically for laying out Michi Method pages.',
+  },
   {
     q: 'Is Bindermon free to use?',
     a: 'Yes. Bindermon is completely free with no signup required. All binder data is stored locally in your browser.',
@@ -86,17 +90,34 @@ export function LandingPage() {
       <main>
         <section className="mx-auto max-w-3xl px-6 py-20 text-center">
           <h1 className="text-4xl sm:text-5xl font-bold tracking-tight text-balance">
-            Design a Pokémon Card Binder, Export a Print-Ready PDF
+            Design Michi Method Pokémon Binders, Export a Print-Ready PDF
           </h1>
           <p className="mt-6 text-lg text-muted-foreground text-balance">
-            Bindermon is a free, browser-based binder page creator for Pokémon trading cards.
-            Search official card sets, arrange them into 9-pocket, 8-pocket, jumbo, or custom grid
-            layouts, and export a PDF sized exactly for printing — no signup, no watermark.
+            Bindermon is a free, browser-based binder page creator built for the Michi Method —
+            combine pockets into custom hero-card panels and themed spreads, search official
+            Pokémon card sets, and export a print-ready PDF sized exactly for standard binder
+            pages. No signup, no watermark.
           </p>
           <div className="mt-8 flex items-center justify-center gap-3">
             <Link to="/app" className={buttonVariants({ variant: 'default', size: 'lg' })}>
               Open Bindermon
             </Link>
+          </div>
+        </section>
+
+        <section className="border-t border-border px-6 py-16">
+          <div className="mx-auto max-w-3xl">
+            <h2 className="text-2xl font-semibold tracking-tight text-center">
+              Built for the Michi Method
+            </h2>
+            <p className="mt-4 text-muted-foreground text-center text-balance">
+              The Michi Method is a popular way to lay out Pokémon binder pages: instead of one
+              card per pocket, you combine several adjacent pockets into a single custom panel —
+              a hero card, extended artwork, or a themed spread — mixed with regular single-card
+              pockets and intentional negative space. Bindermon's pocket-combining, cropping, and
+              positioning tools make it easy to design your own Michi Method binder pages and
+              print them at exact card size.
+            </p>
           </div>
         </section>
 
