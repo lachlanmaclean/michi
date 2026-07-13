@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { LayoutGrid, Search, FileDown, Grid3x3, Sparkles, Printer, Combine } from 'lucide-react';
+import { LayoutGrid, Search, FileDown, Grid3x3, Sparkles, Printer, Combine, Coffee } from 'lucide-react';
 import { buttonVariants } from '@/components/ui/button';
 import {
   Accordion,
@@ -80,7 +80,16 @@ export function LandingPage() {
       <header className="flex items-center gap-2 border-b border-border px-6 py-4">
         <LayoutGrid className="size-5 text-primary" />
         <span className="text-lg font-semibold tracking-tight">Bindermon</span>
-        <nav className="ml-auto">
+        <nav className="ml-auto flex items-center gap-2">
+          <a
+            href="https://ko-fi.com/xhunternz"
+            target="_blank"
+            rel="noopener noreferrer"
+            className={buttonVariants({ variant: 'outline', size: 'sm' })}
+          >
+            <Coffee className="size-4" />
+            Consider supporting me
+          </a>
           <Link to="/app" className={buttonVariants({ variant: 'default', size: 'sm' })}>
             Open Bindermon
           </Link>
