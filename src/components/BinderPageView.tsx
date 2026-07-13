@@ -350,14 +350,6 @@ export function BinderPageView({ page }: { page: BinderPage }) {
                 selectPlacement(placement.id);
               }}
               onPanDrag={(x, y) => setDraftOffset({ x, y })}
-              onZoom={(scale) =>
-                dispatch({
-                  type: 'UPDATE_CROP',
-                  pageId: page.id,
-                  placementId: placement.id,
-                  crop: { ...placement.crop, scale },
-                })
-              }
               onResizeStart={(handle, e) => {
                 selectPlacement(placement.id);
                 onResizeStart(placement.id, handle, e);

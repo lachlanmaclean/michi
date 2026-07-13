@@ -14,12 +14,8 @@ interface Props {
   draftOffset: { x: number; y: number } | null;
   onSelect: (e: React.PointerEvent) => void;
   onPanDrag: (offsetX: number, offsetY: number) => void;
-  onZoom: (scale: number) => void;
   onResizeStart: (handle: ResizeHandle, e: React.PointerEvent) => void;
 }
-
-const MIN_SCALE = 1;
-const MAX_SCALE = 4;
 
 export function PlacementView({
   placement,
@@ -30,7 +26,6 @@ export function PlacementView({
   draftOffset,
   onSelect,
   onPanDrag,
-  onZoom,
   onResizeStart,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -111,15 +106,6 @@ export function PlacementView({
     }
   }
 
-  function onWheel(e: React.WheelEvent) {
-    if (!selected || isFill) return;
-    e.preventDefault();
-    e.stopPropagation();
-    const delta = -e.deltaY * 0.001;
-    const next = Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale + delta));
-    onZoom(next);
-  }
-
   const src = placement.source.kind === 'upload' ? placement.source.dataUrl : placement.source.url;
 
   // Image left/top edge, relative to the card-content box's own top-left
@@ -176,7 +162,6 @@ export function PlacementView({
       onPointerDown={onImagePointerDown}
       onPointerMove={onImagePointerMove}
       onPointerUp={onImagePointerUp}
-      onWheel={onWheel}
     >
       {placement.combined ? (
         // Combined: one seamless tile spanning the whole rect, no internal
