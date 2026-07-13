@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { AppStateProvider, useAppState } from '@/state/AppStateContext';
 import { GridConfigPanel } from '@/components/GridConfigPanel';
 import { SearchFilterPanel } from '@/components/SearchFilterPanel';
@@ -17,8 +18,10 @@ function AppShell() {
   return (
     <div className="grid h-screen grid-cols-[280px_1fr_300px] grid-rows-[auto_1fr] bg-background text-foreground">
       <header className="col-span-3 flex items-center gap-2 border-b border-border px-6 py-3">
-        <LayoutGrid className="size-5 text-primary" />
-        <h1 className="text-lg font-semibold tracking-tight">Bindermon</h1>
+        <Link to="/" className="flex items-center gap-2 shrink-0">
+          <LayoutGrid className="size-5 text-primary" />
+          <span className="text-lg font-semibold tracking-tight">Bindermon</span>
+        </Link>
         <span className="text-sm text-muted-foreground">Pokémon Binder Creator</span>
         <div className="ml-auto flex items-center gap-2">
           <a
