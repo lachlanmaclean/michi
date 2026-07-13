@@ -10,6 +10,16 @@ interface Props {
   cardWidthPx: number;
   cardHeightPx: number;
   gapPx: number;
+  /** Cells (absolute grid coords, `'row,col'` keys) covered by a higher layer's placement — not rendered here. */
+  hiddenCells: Set<string>;
+  /**
+   * False for a placement on a non-active, non-selected layer: it still
+   * renders, but pointer-down on it does nothing and falls through to the
+   * grid underneath, so clicking there starts a new selection/placement on
+   * the active layer instead of grabbing this one. Selecting it via another
+   * route (e.g. a layer-panel thumbnail) still works as normal.
+   */
+  interactive: boolean;
   /** Uncommitted pan offset while a pan drag is in progress (or awaiting confirm/cancel). */
   draftOffset: { x: number; y: number } | null;
   onSelect: (e: React.PointerEvent) => void;
@@ -23,6 +33,8 @@ export function PlacementView({
   cardWidthPx,
   cardHeightPx,
   gapPx,
+  hiddenCells,
+  interactive,
   draftOffset,
   onSelect,
   onPanDrag,
@@ -67,6 +79,11 @@ export function PlacementView({
   const renderedHeight = naturalSize ? naturalSize.h * coverScale * scale : spanHeightPx;
 
   function onImagePointerDown(e: React.PointerEvent) {
+    // Not on the active layer (and not already selected some other way,
+    // e.g. via the layer panel) — don't claim this pointerdown at all, let
+    // it bubble to the grid so a click here can start a new selection/
+    // placement on the active layer instead.
+    if (!interactive) return;
     // Pre-rendered card art (fill mode) is stretched to fit exactly, with no
     // pan/zoom to perform.
     if (isFill) {
@@ -105,6 +122,10 @@ export function PlacementView({
       panState.current = null;
     }
   }
+
+  // A seamless combined tile can't render "half" of itself — if a higher
+  // layer covers any part of it, hide the whole thing.
+  if (placement.combined && hiddenCells.size > 0) return null;
 
   const src = placement.source.kind === 'upload' ? placement.source.dataUrl : placement.source.url;
 
@@ -170,34 +191,45 @@ export function PlacementView({
         // that happen to share an image.
         <div
           className={cn(
-            'relative rounded-md overflow-hidden cursor-pointer border-2 transition-colors',
-            selected ? 'border-primary z-10' : 'border-transparent hover:border-primary/60'
+            'relative rounded-md overflow-hidden border-2 transition-colors',
+            interactive && 'cursor-pointer',
+            selected ? 'border-primary z-10' : interactive && 'border-transparent hover:border-primary/60'
           )}
           style={{ gridColumn: `1 / -1`, gridRow: `1 / -1` }}
         >
           {renderImage(0, 0, true)}
         </div>
       ) : (
-        Array.from({ length: spanRows }).map((_, r) =>
-          Array.from({ length: spanCols }).map((_, c) => {
-            // This card's offset within the card-content box (cards tile
-            // edge-to-edge here, ignoring gaps, matching the crop math).
-            const tileLeft = c * cardWidthPx;
-            const tileTop = r * cardHeightPx;
-            return (
-              <div
-                key={`${r}-${c}`}
-                className={cn(
-                  'relative rounded-md overflow-hidden cursor-pointer border-2 transition-colors',
-                  selected ? 'border-primary z-10' : 'border-transparent hover:border-primary/60'
-                )}
-                style={{ width: cardWidthPx, height: cardHeightPx }}
-              >
-                {renderImage(tileLeft, tileTop, r === 0 && c === 0)}
-              </div>
-            );
-          })
-        )
+        (() => {
+          let firstVisibleFound = false;
+          return Array.from({ length: spanRows }).map((_, r) =>
+            Array.from({ length: spanCols }).map((_, c) => {
+              const absRow = placement.rect.rowStart + r;
+              const absCol = placement.rect.colStart + c;
+              if (hiddenCells.has(`${absRow},${absCol}`)) return null;
+
+              // This card's offset within the card-content box (cards tile
+              // edge-to-edge here, ignoring gaps, matching the crop math).
+              const tileLeft = c * cardWidthPx;
+              const tileTop = r * cardHeightPx;
+              const isFirstVisible = !firstVisibleFound;
+              firstVisibleFound = true;
+              return (
+                <div
+                  key={`${r}-${c}`}
+                  className={cn(
+                    'relative rounded-md overflow-hidden border-2 transition-colors',
+                    interactive && 'cursor-pointer',
+                    selected ? 'border-primary z-10' : interactive && 'border-transparent hover:border-primary/60'
+                  )}
+                  style={{ gridRow: r + 1, gridColumn: c + 1, width: cardWidthPx, height: cardHeightPx }}
+                >
+                  {renderImage(tileLeft, tileTop, isFirstVisible)}
+                </div>
+              );
+            })
+          );
+        })()
       )}
 
       {selected && (

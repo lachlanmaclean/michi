@@ -17,14 +17,26 @@ type Action =
   | { type: 'UPDATE_CROP'; pageId: string; placementId: string; crop: CropTransform }
   | { type: 'UPDATE_EXPORT_SETTINGS'; settings: Partial<AppState['exportSettings']> }
   | { type: 'SET_SEARCH_SET'; setId: string | null }
-  | { type: 'SET_COMBINED'; pageId: string; placementId: string; combined: boolean };
+  | { type: 'SET_COMBINED'; pageId: string; placementId: string; combined: boolean }
+  | { type: 'ADD_LAYER'; pageId: string }
+  | { type: 'REMOVE_LAYER'; pageId: string; layerId: string }
+  | { type: 'SET_ACTIVE_LAYER'; pageId: string; layerId: string }
+  | { type: 'REORDER_LAYER'; pageId: string; layerId: string; direction: 'raise' | 'lower' };
 
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
     case 'SET_GRID_CONFIG': {
-      const pages = state.binder.pages.map((p) =>
-        p.id === action.pageId ? { ...p, gridConfig: action.gridConfig, placements: [] } : p
-      );
+      const pages = state.binder.pages.map((p) => {
+        if (p.id !== action.pageId) return p;
+        const layer = { id: uuid(), name: 'Layer 1' };
+        return {
+          ...p,
+          gridConfig: action.gridConfig,
+          placements: [],
+          layers: [layer],
+          activeLayerId: layer.id,
+        };
+      });
       return {
         ...state,
         binder: {
@@ -36,9 +48,8 @@ function reducer(state: AppState, action: Action): AppState {
     }
     case 'ADD_PAGE': {
       const page: BinderPage = {
-        id: uuid(),
+        ...createDefaultPage(),
         gridConfig: state.binder.defaultGridConfig,
-        placements: [],
       };
       return {
         ...state,
@@ -121,6 +132,43 @@ function reducer(state: AppState, action: Action): AppState {
               ),
             }
       );
+      return { ...state, binder: { ...state.binder, pages } };
+    }
+    case 'ADD_LAYER': {
+      const pages = state.binder.pages.map((p) => {
+        if (p.id !== action.pageId) return p;
+        const layer = { id: uuid(), name: `Layer ${p.layers.length + 1}` };
+        return { ...p, layers: [...p.layers, layer], activeLayerId: layer.id };
+      });
+      return { ...state, binder: { ...state.binder, pages } };
+    }
+    case 'REMOVE_LAYER': {
+      const pages = state.binder.pages.map((p) => {
+        if (p.id !== action.pageId || p.layers.length <= 1) return p;
+        const layers = p.layers.filter((l) => l.id !== action.layerId);
+        const placements = p.placements.filter((pl) => pl.layerId !== action.layerId);
+        const activeLayerId =
+          p.activeLayerId === action.layerId ? layers[layers.length - 1].id : p.activeLayerId;
+        return { ...p, layers, placements, activeLayerId };
+      });
+      return { ...state, binder: { ...state.binder, pages } };
+    }
+    case 'SET_ACTIVE_LAYER': {
+      const pages = state.binder.pages.map((p) =>
+        p.id !== action.pageId ? p : { ...p, activeLayerId: action.layerId }
+      );
+      return { ...state, binder: { ...state.binder, pages } };
+    }
+    case 'REORDER_LAYER': {
+      const pages = state.binder.pages.map((p) => {
+        if (p.id !== action.pageId) return p;
+        const idx = p.layers.findIndex((l) => l.id === action.layerId);
+        const swapWith = action.direction === 'raise' ? idx + 1 : idx - 1;
+        if (idx < 0 || swapWith < 0 || swapWith >= p.layers.length) return p;
+        const layers = [...p.layers];
+        [layers[idx], layers[swapWith]] = [layers[swapWith], layers[idx]];
+        return { ...p, layers };
+      });
       return { ...state, binder: { ...state.binder, pages } };
     }
     default:

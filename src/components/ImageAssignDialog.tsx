@@ -20,7 +20,7 @@ import { cn } from '@/lib/utils';
 interface Props {
   rect: CellRect;
   existingPlacement: ImagePlacement | null;
-  onConfirm: (placement: ImagePlacement) => void;
+  onConfirm: (placement: Omit<ImagePlacement, 'layerId'>) => void;
   onRemove?: () => void;
   onCancel: () => void;
 }

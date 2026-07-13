@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAppState } from '@/state/AppStateContext';
 import type { BinderPage, CellRect, ImagePlacement } from '@/types/binder';
 import { clampRectToGrid, isCombinablePair, normalizeRect, rectContains, rectsOverlap } from '@/utils/grid';
+import { computeWinnerMap } from '@/utils/compositing';
 import { ImageAssignDialog } from './ImageAssignDialog';
 import { PlacementView } from './PlacementView';
 import { Button } from '@/components/ui/button';
@@ -17,7 +18,13 @@ const GAP_PX = 6;
 
 type ResizeHandle = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
 
-export function BinderPageView({ page }: { page: BinderPage }) {
+interface Props {
+  page: BinderPage;
+  selectedId: string | null;
+  onSelectedIdChange: (id: string | null) => void;
+}
+
+export function BinderPageView({ page, selectedId, onSelectedIdChange: setSelectedId }: Props) {
   const { dispatch } = useAppState();
   const gridRef = useRef<HTMLDivElement>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
@@ -25,7 +32,6 @@ export function BinderPageView({ page }: { page: BinderPage }) {
   const [selectionRect, setSelectionRect] = useState<CellRect | null>(null);
   const [dialogRect, setDialogRect] = useState<CellRect | null>(null);
   const [editingPlacement, setEditingPlacement] = useState<ImagePlacement | null>(null);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draftOffset, setDraftOffset] = useState<{ x: number; y: number } | null>(null);
   const resizeState = useRef<{
     placementId: string;
@@ -35,6 +41,21 @@ export function BinderPageView({ page }: { page: BinderPage }) {
 
   const { rows, cols } = page.gridConfig;
   const selectedPlacement = page.placements.find((p) => p.id === selectedId) ?? null;
+
+  // Which placement "wins" each grid cell — the one on the topmost layer
+  // covering it. Recomputed whenever placements or layer order change; never
+  // stored, so uncovering a lower layer needs no explicit cleanup anywhere.
+  const winner = useMemo(() => computeWinnerMap(page), [page]);
+
+  function hiddenCellsFor(placement: ImagePlacement): Set<string> {
+    const hidden = new Set<string>();
+    for (let row = placement.rect.rowStart; row <= placement.rect.rowEnd; row++) {
+      for (let col = placement.rect.colStart; col <= placement.rect.colEnd; col++) {
+        if (winner.get(`${row},${col}`) !== placement.id) hidden.add(`${row},${col}`);
+      }
+    }
+    return hidden;
+  }
 
   useEffect(() => {
     // Deselect if the selected placement no longer exists on this page (e.g. grid changed).
@@ -136,7 +157,9 @@ export function BinderPageView({ page }: { page: BinderPage }) {
       setDragAnchor(null);
       return;
     }
-    const overlaps = page.placements.some((p) => rectsOverlap(p.rect, selectionRect));
+    const overlaps = page.placements.some(
+      (p) => p.layerId === page.activeLayerId && rectsOverlap(p.rect, selectionRect)
+    );
     setDragAnchor(null);
     if (overlaps) {
       setSelectionRect(null);
@@ -163,7 +186,7 @@ export function BinderPageView({ page }: { page: BinderPage }) {
 
     const nextRect = clampRectToGrid({ rowStart, colStart, rowEnd, colEnd }, rows, cols);
     const overlapsOther = page.placements.some(
-      (p) => p.id !== placement.id && rectsOverlap(p.rect, nextRect)
+      (p) => p.id !== placement.id && p.layerId === placement.layerId && rectsOverlap(p.rect, nextRect)
     );
     if (overlapsOther) return;
 
@@ -185,9 +208,11 @@ export function BinderPageView({ page }: { page: BinderPage }) {
     setEditingPlacement(null);
   }
 
-  function confirmAssign(placement: ImagePlacement) {
-    dispatch({ type: 'ASSIGN_IMAGE', pageId: page.id, placement });
-    setSelectedId(placement.id);
+  function confirmAssign(placement: Omit<ImagePlacement, 'layerId'>) {
+    const layerId = editingPlacement ? editingPlacement.layerId : page.activeLayerId;
+    const stamped: ImagePlacement = { ...placement, layerId };
+    dispatch({ type: 'ASSIGN_IMAGE', pageId: page.id, placement: stamped });
+    setSelectedId(stamped.id);
     closeDialog();
   }
 
@@ -204,6 +229,14 @@ export function BinderPageView({ page }: { page: BinderPage }) {
 
   const cellSpanned = (row: number, col: number) =>
     page.placements.some((p) => rectContains(p.rect, row, col));
+
+  // Paint bottom layer first, topmost last — DOM/paint order then naturally
+  // matches z-order, so a higher layer's placement also wins pointer events
+  // over whatever it visually covers.
+  const layerOrder = new Map(page.layers.map((l, i) => [l.id, i]));
+  const paintOrderedPlacements = [...page.placements].sort(
+    (a, b) => (layerOrder.get(a.layerId) ?? -1) - (layerOrder.get(b.layerId) ?? -1)
+  );
 
   return (
     <div className="flex-1 overflow-auto flex items-start justify-center p-6">
@@ -335,27 +368,37 @@ export function BinderPageView({ page }: { page: BinderPage }) {
             )
           )}
 
-          {page.placements.map((placement) => (
-            <PlacementView
-              key={placement.id}
-              placement={placement}
-              selected={placement.id === selectedId}
-              cardWidthPx={CARD_WIDTH_PX}
-              cardHeightPx={CARD_HEIGHT_PX}
-              gapPx={GAP_PX}
-              draftOffset={placement.id === selectedId ? draftOffset : null}
-              onSelect={(e) => {
-                e.stopPropagation();
-                if (draftOffset) confirmPan();
-                selectPlacement(placement.id);
-              }}
-              onPanDrag={(x, y) => setDraftOffset({ x, y })}
-              onResizeStart={(handle, e) => {
-                selectPlacement(placement.id);
-                onResizeStart(placement.id, handle, e);
-              }}
-            />
-          ))}
+          {paintOrderedPlacements.map((placement) => {
+            const hiddenCells = hiddenCellsFor(placement);
+            const spanCells =
+              (placement.rect.rowEnd - placement.rect.rowStart + 1) *
+              (placement.rect.colEnd - placement.rect.colStart + 1);
+            if (hiddenCells.size === spanCells) return null; // fully covered by a higher layer
+
+            return (
+              <PlacementView
+                key={placement.id}
+                placement={placement}
+                selected={placement.id === selectedId}
+                cardWidthPx={CARD_WIDTH_PX}
+                cardHeightPx={CARD_HEIGHT_PX}
+                gapPx={GAP_PX}
+                hiddenCells={hiddenCells}
+                interactive={placement.layerId === page.activeLayerId || placement.id === selectedId}
+                draftOffset={placement.id === selectedId ? draftOffset : null}
+                onSelect={(e) => {
+                  e.stopPropagation();
+                  if (draftOffset) confirmPan();
+                  selectPlacement(placement.id);
+                }}
+                onPanDrag={(x, y) => setDraftOffset({ x, y })}
+                onResizeStart={(handle, e) => {
+                  selectPlacement(placement.id);
+                  onResizeStart(placement.id, handle, e);
+                }}
+              />
+            );
+          })}
 
           {selectionRect && (
             <div

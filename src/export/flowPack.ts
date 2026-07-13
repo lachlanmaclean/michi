@@ -1,4 +1,5 @@
 import type { Binder, ImagePlacement } from '../types/binder';
+import { computeWinnerMap } from '../utils/compositing';
 
 export interface FlowItem {
   placement: ImagePlacement;
@@ -49,14 +50,26 @@ export function flowPackPlacements(
   // "Include Pokémon cards" toggle is off, so they never reserve a print
   // slot that would otherwise sit blank once pdfExport.ts skips drawing it.
   const orderedPlacements: ImagePlacement[] = [];
+  // Which placement wins each grid cell, keyed by page (a placement never
+  // moves between pages, so its id is a stable key into its own page's map)
+  // — mirrors the on-screen compositing rule so print output matches what's
+  // shown in the editor exactly.
+  const winnerByPlacementId = new Map<string, Map<string, string>>();
   for (const page of binder.pages) {
+    const winner = computeWinnerMap(page);
     const sorted = [...page.placements]
       .filter((p) => includePokemonCards || p.source.kind !== 'url')
       .sort((a, b) => {
         if (a.rect.rowStart !== b.rect.rowStart) return a.rect.rowStart - b.rect.rowStart;
         return a.rect.colStart - b.rect.colStart;
       });
+    for (const p of sorted) winnerByPlacementId.set(p.id, winner);
     orderedPlacements.push(...sorted);
+  }
+
+  function isCellVisible(placement: ImagePlacement, row: number, col: number): boolean {
+    const winner = winnerByPlacementId.get(placement.id);
+    return winner?.get(`${row},${col}`) === placement.id;
   }
 
   const blocks = orderedPlacements.map((placement) => ({
@@ -71,6 +84,20 @@ export function flowPackPlacements(
   let col = 0;
 
   for (const block of blocks) {
+    // Skip a block entirely (no flow-position advance at all) if every one
+    // of its cells is covered by a higher layer — it contributes nothing to
+    // print, so it must not reserve a slot as if it were still there.
+    let anyVisible = false;
+    for (let r = block.placement.rect.rowStart; r <= block.placement.rect.rowEnd && !anyVisible; r++) {
+      for (let c = block.placement.rect.colStart; c <= block.placement.rect.colEnd; c++) {
+        if (isCellVisible(block.placement, r, c)) {
+          anyVisible = true;
+          break;
+        }
+      }
+    }
+    if (!anyVisible) continue;
+
     const chunkCols = block.placement.combined ? block.blockCols : Math.min(block.blockCols, printCols);
     const chunkRows = block.placement.combined ? block.blockRows : Math.min(block.blockRows, printRows);
 
@@ -90,16 +117,31 @@ export function flowPackPlacements(
     }
 
     if (block.placement.combined) {
-      items.push({
-        placement: block.placement,
-        spanCols: block.blockCols,
-        spanRows: block.blockRows,
-        sourceColOffset: 0,
-        sourceRowOffset: 0,
-        printPageIndex,
-        row,
-        col,
-      });
+      // A seamless combined tile can't print "half" of itself — if a higher
+      // layer covers any part of it, the whole block is skipped (already
+      // guaranteed not fully-invisible by the anyVisible check above, but
+      // "fully visible" is required here specifically, not just "partly").
+      let fullyVisible = true;
+      for (let r = block.placement.rect.rowStart; r <= block.placement.rect.rowEnd && fullyVisible; r++) {
+        for (let c = block.placement.rect.colStart; c <= block.placement.rect.colEnd; c++) {
+          if (!isCellVisible(block.placement, r, c)) {
+            fullyVisible = false;
+            break;
+          }
+        }
+      }
+      if (fullyVisible) {
+        items.push({
+          placement: block.placement,
+          spanCols: block.blockCols,
+          spanRows: block.blockRows,
+          sourceColOffset: 0,
+          sourceRowOffset: 0,
+          printPageIndex,
+          row,
+          col,
+        });
+      }
       col += block.blockCols;
       continue;
     }
@@ -124,6 +166,9 @@ export function flowPackPlacements(
 
         for (let r = rFrom; r < rTo; r++) {
           for (let c = cFrom; c < cTo; c++) {
+            const absRow = block.placement.rect.rowStart + r;
+            const absCol = block.placement.rect.colStart + c;
+            if (!isCellVisible(block.placement, absRow, absCol)) continue;
             items.push({
               placement: block.placement,
               spanCols: 1,

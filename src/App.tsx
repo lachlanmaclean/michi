@@ -1,6 +1,8 @@
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AppStateProvider, useAppState } from '@/state/AppStateContext';
 import { GridConfigPanel } from '@/components/GridConfigPanel';
+import { LayerPanel } from '@/components/LayerPanel';
 import { SearchFilterPanel } from '@/components/SearchFilterPanel';
 import { PageTabs } from '@/components/PageTabs';
 import { BinderPageView } from '@/components/BinderPageView';
@@ -14,6 +16,14 @@ function AppShell() {
   const { state, storageWarning } = useAppState();
   const { theme, toggleTheme } = useTheme();
   const activePage = state.binder.pages.find((p) => p.id === state.activePageId)!;
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  // Selection is page-scoped — a placement id from the previous page must
+  // never carry over when switching pages (BinderPageView also remounts via
+  // key={activePage.id}, but selectedId lives above that remount boundary).
+  useEffect(() => {
+    setSelectedId(null);
+  }, [activePage.id]);
 
   return (
     <div className="grid h-screen grid-cols-[280px_1fr_300px] grid-rows-[auto_1fr] bg-background text-foreground">
@@ -52,12 +62,18 @@ function AppShell() {
 
       <aside className="overflow-y-auto border-r border-border bg-sidebar px-6 py-4 flex flex-col gap-6">
         <GridConfigPanel />
+        <LayerPanel page={activePage} selectedId={selectedId} onSelectPlacement={setSelectedId} />
         <SearchFilterPanel />
       </aside>
 
       <main className="flex flex-col overflow-hidden">
         <PageTabs />
-        <BinderPageView page={activePage} key={activePage.id} />
+        <BinderPageView
+          page={activePage}
+          key={activePage.id}
+          selectedId={selectedId}
+          onSelectedIdChange={setSelectedId}
+        />
       </main>
 
       <aside className="overflow-y-auto border-l border-border bg-sidebar px-6 py-4 flex flex-col">

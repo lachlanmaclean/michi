@@ -112,7 +112,7 @@ export function GridConfigPanel() {
       </div>
 
       <p className="text-xs text-muted-foreground">
-        Changing the grid clears this page's placements.
+        Changing the grid clears this page's placements and layers.
       </p>
     </div>
   );

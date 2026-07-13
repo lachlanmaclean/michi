@@ -44,6 +44,8 @@ export type FitMode = 'cover' | 'fill';
 
 export interface ImagePlacement {
   id: string;
+  /** Which layer this placement belongs to — see `BinderPage.layers`. */
+  layerId: string;
   rect: CellRect;
   source: ImageSource;
   crop: CropTransform;
@@ -56,9 +58,24 @@ export interface ImagePlacement {
   combined: boolean;
 }
 
+/**
+ * A z-ordered slot for placements on a page. Layers render/composite
+ * bottom-to-top: `BinderPage.layers[0]` is the bottom (e.g. a full-art
+ * "Michi cover"), later layers stack above it. For any grid cell, the
+ * topmost layer with a placement covering that cell wins — lower layers are
+ * never mutated or deleted to make room, just visually covered.
+ */
+export interface Layer {
+  id: string;
+  name: string;
+}
+
 export interface BinderPage {
   id: string;
   gridConfig: GridConfig;
+  layers: Layer[];
+  /** Which layer new placements are created on. */
+  activeLayerId: string;
   placements: ImagePlacement[];
 }
 

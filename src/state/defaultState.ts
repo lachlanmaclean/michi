@@ -1,12 +1,15 @@
 import { v4 as uuid } from 'uuid';
 import type { AppState, BinderPage } from '../types/binder';
 
-export const SCHEMA_VERSION = 7;
+export const SCHEMA_VERSION = 8;
 
 export function createDefaultPage(): BinderPage {
+  const layer = { id: uuid(), name: 'Layer 1' };
   return {
     id: uuid(),
     gridConfig: { rows: 3, cols: 3, preset: '3x3' },
+    layers: [layer],
+    activeLayerId: layer.id,
     placements: [],
   };
 }
