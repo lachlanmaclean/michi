@@ -35,7 +35,7 @@ function AppShell() {
         <span className="text-sm text-muted-foreground">Pokémon Binder Creator</span>
         <div className="ml-auto flex items-center gap-2">
           <a
-            href="#"
+            href="https://ko-fi.com/xhunternz"
             target="_blank"
             rel="noopener noreferrer"
             className={buttonVariants({ variant: 'outline', size: 'sm' })}
