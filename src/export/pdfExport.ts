@@ -214,7 +214,6 @@ export async function exportBinderToPdf(binder: Binder, settings: ExportSettings
   for (let i = 0; i < numPrintPages; i++) {
     const pdfPage = pdfDoc.addPage([pageWidth, pageHeight]);
     if (settings.showPageGuides) drawPageGuides(pdfPage);
-    if (settings.showCardEdge) drawGridCrosshairs(pdfPage);
     pdfPages.push(pdfPage);
   }
 
@@ -291,6 +290,13 @@ export async function exportBinderToPdf(binder: Binder, settings: ExportSettings
 
     if (settings.showCropMarks) drawCropMarks(pdfPage, item.row, item.col, item.spanCols, item.spanRows);
     if (settings.showSafeArea) drawSafeArea(pdfPage, item.row, item.col, item.spanCols, item.spanRows);
+  }
+
+  // Drawn after every card image on every page, so crosshairs are always
+  // visible on top of card art at every intersection rather than being
+  // hidden underneath opaque cells.
+  if (settings.showCardEdge) {
+    for (const pdfPage of pdfPages) drawGridCrosshairs(pdfPage);
   }
 
   const bytes = await pdfDoc.save();
