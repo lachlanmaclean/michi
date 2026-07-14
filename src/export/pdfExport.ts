@@ -141,12 +141,44 @@ export async function exportBinderToPdf(binder: Binder, settings: ExportSettings
     });
   }
 
+  // Short corner tick marks (crosshairs) rather than a full outline — same
+  // idea as drawCropMarks, just in the card-edge color and drawn right at
+  // the cut line itself (no inward offset), so it reads as a cut-position
+  // marker rather than a border around the whole card.
   function drawCardEdge(page: PDFPage, row: number, col: number, unitCols: number, unitRows: number) {
     const { cutX, cutY } = cutRectFor(row, col);
-    // Straight 90° corners (not rounded to the physical card radius) to
-    // match Proxxied's cut-line style — this is a cut/registration guide,
-    // not a preview of the card's actual rounded corners.
-    drawRoundedRectStroke(page, cutX, cutY, unitCols * CARD_WIDTH_PT, unitRows * CARD_HEIGHT_PT, 0, cardEdgeColor, 1);
+    const unitWidth = unitCols * CARD_WIDTH_PT;
+    const unitHeight = unitRows * CARD_HEIGHT_PT;
+    const markLength = 6;
+    const corners = [
+      { x: cutX, y: cutY }, // bottom-left
+      { x: cutX + unitWidth, y: cutY }, // bottom-right
+      { x: cutX, y: cutY + unitHeight }, // top-left
+      { x: cutX + unitWidth, y: cutY + unitHeight }, // top-right
+    ];
+    const dirs = [
+      { dx: 1, dy: 1 },
+      { dx: -1, dy: 1 },
+      { dx: 1, dy: -1 },
+      { dx: -1, dy: -1 },
+    ];
+    corners.forEach((corner, i) => {
+      const { dx, dy } = dirs[i];
+      // horizontal tick
+      page.drawLine({
+        start: { x: corner.x, y: corner.y },
+        end: { x: corner.x + dx * markLength, y: corner.y },
+        thickness: 1,
+        color: cardEdgeColor,
+      });
+      // vertical tick
+      page.drawLine({
+        start: { x: corner.x, y: corner.y },
+        end: { x: corner.x, y: corner.y + dy * markLength },
+        thickness: 1,
+        color: cardEdgeColor,
+      });
+    });
   }
 
   function drawSafeArea(page: PDFPage, row: number, col: number, unitCols: number, unitRows: number) {
