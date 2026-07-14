@@ -147,7 +147,7 @@ export async function exportBinderToPdf(binder: Binder, settings: ExportSettings
   // separate tick per card corner, drawn uniformly across the full print
   // grid regardless of which cells actually have content.
   function drawGridCrosshairs(page: PDFPage) {
-    const markLength = 10;
+    const markLength = 24;
     const left = marginLeft;
     const bottom = pageHeight - marginTop - gridHeightPt;
 

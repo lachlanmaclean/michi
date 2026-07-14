@@ -35,7 +35,7 @@ export function createDefaultState(): AppState {
       showCardEdge: true,
       showSafeArea: false,
       pageGuideColor: '#000000',
-      showPageGuides: false,
+      showPageGuides: true,
       cardSpacingXMm: 0,
       cardSpacingYMm: 0,
       cardOffsetXMm: 0,
