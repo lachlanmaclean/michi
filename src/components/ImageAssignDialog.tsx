@@ -133,7 +133,7 @@ export function ImageAssignDialog({ rect, existingPlacement, onConfirm, onRemove
 
   return (
     <Dialog open onOpenChange={(open) => !open && onCancel()}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>
             {existingPlacement ? 'Edit image' : 'Assign image'} — {spanCols}×{spanRows}
@@ -170,14 +170,14 @@ export function ImageAssignDialog({ rect, existingPlacement, onConfirm, onRemove
               )}
 
               {!searching && results.length > 0 && (
-                <div className="grid grid-cols-4 gap-2 max-h-64 overflow-y-auto">
+                <div className="grid grid-cols-3 gap-3 max-h-[60vh] overflow-y-auto p-1">
                   {results.map((card) => (
                     <button
                       key={card.id}
                       type="button"
                       onClick={() => selectCard(card)}
                       className={cn(
-                        'rounded-md overflow-hidden border-2 transition-colors',
+                        'rounded-md overflow-hidden border-2 transition-colors bg-muted',
                         selectedCardId === card.id
                           ? 'border-primary'
                           : 'border-transparent hover:border-primary/60'
@@ -187,7 +187,8 @@ export function ImageAssignDialog({ rect, existingPlacement, onConfirm, onRemove
                       <img
                         src={tcgdexThumbnailUrl(card) ?? tcgdexImageUrl(card)!}
                         alt={card.name}
-                        className="w-full aspect-[2.5/3.5] object-cover bg-muted"
+                        className="w-full h-auto"
+                        style={{ aspectRatio: '2.5 / 3.5' }}
                         loading="lazy"
                       />
                     </button>
