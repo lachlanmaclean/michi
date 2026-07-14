@@ -267,7 +267,7 @@ export function ExportPanel() {
                 onCheckedChange={(checked) => update({ showCardEdge: checked })}
               />
               <Label htmlFor="card-edge" className="font-normal">
-                Show card edge outline
+                Show cut-line crosshairs
               </Label>
             </div>
             {exportSettings.showCardEdge && (
@@ -295,6 +295,31 @@ export function ExportPanel() {
                 Show safe area (3mm inset)
               </Label>
             </div>
+
+            <div className="flex items-center gap-2">
+              <Switch
+                id="page-guides"
+                checked={exportSettings.showPageGuides}
+                onCheckedChange={(checked) => update({ showPageGuides: checked })}
+              />
+              <Label htmlFor="page-guides" className="font-normal">
+                Show paper cutter guides
+              </Label>
+            </div>
+            {exportSettings.showPageGuides && (
+              <div className="flex items-center gap-2">
+                <Label htmlFor="page-guide-color" className="font-normal">
+                  Guide color
+                </Label>
+                <input
+                  id="page-guide-color"
+                  type="color"
+                  className="h-8 w-12 rounded border border-input bg-transparent"
+                  value={exportSettings.pageGuideColor}
+                  onChange={(e) => update({ pageGuideColor: e.target.value })}
+                />
+              </div>
+            )}
           </AccordionContent>
         </AccordionItem>
       </Accordion>

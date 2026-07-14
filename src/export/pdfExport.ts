@@ -72,6 +72,7 @@ export async function exportBinderToPdf(binder: Binder, settings: ExportSettings
   const { printCols, printRows } = printGridDims(settings);
   const cropColor = hexToRgb(settings.cropMarkColor);
   const cardEdgeColor = hexToRgb(settings.cardEdgeColor);
+  const pageGuideColor = hexToRgb(settings.pageGuideColor);
   const safeAreaInsetPt = mmToPt(SAFE_AREA_INSET_MM);
   const spacingXPt = mmToPt(settings.cardSpacingXMm);
   const spacingYPt = mmToPt(settings.cardSpacingYMm);
@@ -141,44 +142,35 @@ export async function exportBinderToPdf(binder: Binder, settings: ExportSettings
     });
   }
 
-  // Short corner tick marks (crosshairs) rather than a full outline — same
-  // idea as drawCropMarks, just in the card-edge color and drawn right at
-  // the cut line itself (no inward offset), so it reads as a cut-position
-  // marker rather than a border around the whole card.
-  function drawCardEdge(page: PDFPage, row: number, col: number, unitCols: number, unitRows: number) {
-    const { cutX, cutY } = cutRectFor(row, col);
-    const unitWidth = unitCols * CARD_WIDTH_PT;
-    const unitHeight = unitRows * CARD_HEIGHT_PT;
-    const markLength = 14;
-    const corners = [
-      { x: cutX, y: cutY }, // bottom-left
-      { x: cutX + unitWidth, y: cutY }, // bottom-right
-      { x: cutX, y: cutY + unitHeight }, // top-left
-      { x: cutX + unitWidth, y: cutY + unitHeight }, // top-right
-    ];
-    const dirs = [
-      { dx: 1, dy: 1 },
-      { dx: -1, dy: 1 },
-      { dx: 1, dy: -1 },
-      { dx: -1, dy: -1 },
-    ];
-    corners.forEach((corner, i) => {
-      const { dx, dy } = dirs[i];
-      // horizontal tick
-      page.drawLine({
-        start: { x: corner.x, y: corner.y },
-        end: { x: corner.x + dx * markLength, y: corner.y },
-        thickness: 1.25,
-        color: cardEdgeColor,
-      });
-      // vertical tick
-      page.drawLine({
-        start: { x: corner.x, y: corner.y },
-        end: { x: corner.x, y: corner.y + dy * markLength },
-        thickness: 1.25,
-        color: cardEdgeColor,
-      });
-    });
+  // Crosshairs at every card grid-line intersection across the whole page
+  // (Proxxied-style) — one shared crosshair per intersection rather than a
+  // separate tick per card corner, drawn uniformly across the full print
+  // grid regardless of which cells actually have content.
+  function drawGridCrosshairs(page: PDFPage) {
+    const markLength = 10;
+    const left = marginLeft;
+    const bottom = pageHeight - marginTop - gridHeightPt;
+
+    for (let row = 0; row <= printRows; row++) {
+      const y = bottom + row * pitchY;
+      for (let col = 0; col <= printCols; col++) {
+        const x = left + col * pitchX;
+        // horizontal arm
+        page.drawLine({
+          start: { x: x - markLength / 2, y },
+          end: { x: x + markLength / 2, y },
+          thickness: 1.25,
+          color: cardEdgeColor,
+        });
+        // vertical arm
+        page.drawLine({
+          start: { x, y: y - markLength / 2 },
+          end: { x, y: y + markLength / 2 },
+          thickness: 1.25,
+          color: cardEdgeColor,
+        });
+      }
+    }
   }
 
   function drawSafeArea(page: PDFPage, row: number, col: number, unitCols: number, unitRows: number) {
@@ -195,9 +187,35 @@ export async function exportBinderToPdf(binder: Binder, settings: ExportSettings
     );
   }
 
+  // Full-length straight lines from the outer edge of the printed grid to
+  // the paper's edge, on all four sides — for aligning a paper cutter
+  // against the whole sheet, as opposed to the per-card crop marks/edge
+  // ticks. Drawn once per page along the grid's outer perimeter only (never
+  // between individual cards).
+  function drawPageGuides(page: PDFPage) {
+    const left = marginLeft;
+    const right = marginLeft + gridWidthPt;
+    const bottom = pageHeight - marginTop - gridHeightPt;
+    const top = pageHeight - marginTop;
+
+    // Vertical guides: extend the left/right edges all the way to the top
+    // and bottom of the paper.
+    [left, right].forEach((x) => {
+      page.drawLine({ start: { x, y: 0 }, end: { x, y: pageHeight }, thickness: 1, color: pageGuideColor });
+    });
+    // Horizontal guides: extend the top/bottom edges all the way to the
+    // left and right of the paper.
+    [bottom, top].forEach((y) => {
+      page.drawLine({ start: { x: 0, y }, end: { x: pageWidth, y }, thickness: 1, color: pageGuideColor });
+    });
+  }
+
   const pdfPages: PDFPage[] = [];
   for (let i = 0; i < numPrintPages; i++) {
-    pdfPages.push(pdfDoc.addPage([pageWidth, pageHeight]));
+    const pdfPage = pdfDoc.addPage([pageWidth, pageHeight]);
+    if (settings.showPageGuides) drawPageGuides(pdfPage);
+    if (settings.showCardEdge) drawGridCrosshairs(pdfPage);
+    pdfPages.push(pdfPage);
   }
 
   for (const item of items) {
@@ -272,7 +290,6 @@ export async function exportBinderToPdf(binder: Binder, settings: ExportSettings
     pdfPage.pushOperators(...popClipOperators());
 
     if (settings.showCropMarks) drawCropMarks(pdfPage, item.row, item.col, item.spanCols, item.spanRows);
-    if (settings.showCardEdge) drawCardEdge(pdfPage, item.row, item.col, item.spanCols, item.spanRows);
     if (settings.showSafeArea) drawSafeArea(pdfPage, item.row, item.col, item.spanCols, item.spanRows);
   }
 

@@ -98,6 +98,13 @@ export interface ExportSettings {
   cardEdgeColor: string;
   showCardEdge: boolean;
   showSafeArea: boolean;
+  /**
+   * Full-length straight guide lines from the outer edge of the printed
+   * grid to the paper's edge, on all four sides — for aligning a paper
+   * cutter/guillotine, as opposed to the per-card crop marks/edge ticks.
+   */
+  pageGuideColor: string;
+  showPageGuides: boolean;
   /** Extra gap between printed cards, beyond their true edge-to-edge tiling. */
   cardSpacingXMm: number;
   cardSpacingYMm: number;
