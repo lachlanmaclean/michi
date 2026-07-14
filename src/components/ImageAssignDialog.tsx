@@ -2,7 +2,15 @@ import { useEffect, useRef, useState } from 'react';
 import { v4 as uuid } from 'uuid';
 import { DEFAULT_CROP, type CellRect, type FitMode, type ImagePlacement, type ImageSource } from '@/types/binder';
 import { fileToDataUrl } from '@/utils/imageLoad';
-import { searchTcgdexCards, tcgdexImageUrl, tcgdexThumbnailUrl, type TcgdexCardBrief } from '@/utils/tcgdex';
+import {
+  searchTcgdexCards,
+  tcgdexImageUrl,
+  tcgdexThumbnailUrl,
+  parseCardQuery,
+  findSetByCardCount,
+  fetchTcgdexSets,
+  type TcgdexCardBrief,
+} from '@/utils/tcgdex';
 import { useAppState } from '@/state/AppStateContext';
 import {
   Dialog,
@@ -54,8 +62,23 @@ export function ImageAssignDialog({ rect, existingPlacement, onConfirm, onRemove
     setSearching(true);
     searchTimer.current = setTimeout(async () => {
       try {
+        const parsed = parseCardQuery(query);
+        // A "170/165"-style set total only resolves a set when the user
+        // hasn't already picked one in the sidebar filter — an explicit
+        // filter always wins.
+        let setId = state.searchSetId ?? undefined;
+        if (!setId && parsed.setTotal) {
+          const sets = await fetchTcgdexSets();
+          setId = findSetByCardCount(sets, parsed.setTotal)?.id;
+        }
         const cards = (
-          await searchTcgdexCards(query.trim(), state.searchSetId ?? undefined, state.searchFullArtOnly)
+          await searchTcgdexCards(
+            parsed.name,
+            setId,
+            state.searchFullArtOnly,
+            parsed.localId,
+            parsed.rarity
+          )
         ).filter((c) => tcgdexImageUrl(c));
         // Exactly one match — skip the preview/Assign step and place it
         // immediately, closing the dialog.
@@ -152,7 +175,7 @@ export function ImageAssignDialog({ rect, existingPlacement, onConfirm, onRemove
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
                 <Input
                   type="text"
-                  placeholder="Search Pokémon cards…"
+                  placeholder="Search by name, e.g. Squirtle IR 170/165…"
                   className="pl-8"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
