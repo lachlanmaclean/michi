@@ -17,6 +17,7 @@ type Action =
   | { type: 'UPDATE_CROP'; pageId: string; placementId: string; crop: CropTransform }
   | { type: 'UPDATE_EXPORT_SETTINGS'; settings: Partial<AppState['exportSettings']> }
   | { type: 'SET_SEARCH_SET'; setId: string | null }
+  | { type: 'SET_SEARCH_FULL_ART_ONLY'; fullArtOnly: boolean }
   | { type: 'SET_COMBINED'; pageId: string; placementId: string; combined: boolean }
   | { type: 'ADD_LAYER'; pageId: string }
   | { type: 'REMOVE_LAYER'; pageId: string; layerId: string }
@@ -121,6 +122,8 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, exportSettings: { ...state.exportSettings, ...action.settings } };
     case 'SET_SEARCH_SET':
       return { ...state, searchSetId: action.setId };
+    case 'SET_SEARCH_FULL_ART_ONLY':
+      return { ...state, searchFullArtOnly: action.fullArtOnly };
     case 'SET_COMBINED': {
       const pages = state.binder.pages.map((p) =>
         p.id !== action.pageId

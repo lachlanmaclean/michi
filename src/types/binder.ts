@@ -123,6 +123,8 @@ export interface AppState {
   exportSettings: ExportSettings;
   /** Set filter applied to card Search (both the sidebar widget and quick-search) — null means search all sets. */
   searchSetId: string | null;
+  /** When true, card Search only returns full-art-tier rarities and above. */
+  searchFullArtOnly: boolean;
   schemaVersion: number;
 }
 

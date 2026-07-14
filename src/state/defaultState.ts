@@ -1,7 +1,7 @@
 import { v4 as uuid } from 'uuid';
 import type { AppState, BinderPage } from '../types/binder';
 
-export const SCHEMA_VERSION = 10;
+export const SCHEMA_VERSION = 11;
 
 export function createDefaultPage(): BinderPage {
   const layer = { id: uuid(), name: 'Layer 1' };
@@ -25,6 +25,7 @@ export function createDefaultState(): AppState {
     },
     activePageId: page.id,
     searchSetId: null,
+    searchFullArtOnly: false,
     exportSettings: {
       pageSize: 'Letter',
       customWidthMm: 216,

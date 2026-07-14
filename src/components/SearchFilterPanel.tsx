@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { useAppState } from '@/state/AppStateContext';
 import { fetchTcgdexSets, type TcgdexSetBrief } from '@/utils/tcgdex';
 import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 import { Loader2, Search, X } from 'lucide-react';
 
@@ -91,6 +93,17 @@ export function SearchFilterPanel() {
         Card searches (including clicking an empty slot to quick-add) are limited to this set. Leave
         empty to search all sets.
       </p>
+
+      <div className="flex items-center gap-2 pt-1">
+        <Switch
+          id="full-art-only"
+          checked={state.searchFullArtOnly}
+          onCheckedChange={(checked) => dispatch({ type: 'SET_SEARCH_FULL_ART_ONLY', fullArtOnly: checked })}
+        />
+        <Label htmlFor="full-art-only" className="font-normal">
+          Only full art cards and above
+        </Label>
+      </div>
     </div>
   );
 }

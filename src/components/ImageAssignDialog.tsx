@@ -14,8 +14,6 @@ import {
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Switch } from '@/components/ui/switch';
-import { Label } from '@/components/ui/label';
 import { Loader2, Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -44,7 +42,6 @@ export function ImageAssignDialog({ rect, existingPlacement, onConfirm, onRemove
   const [results, setResults] = useState<TcgdexCardBrief[]>([]);
   const [searching, setSearching] = useState(false);
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
-  const [fullArtOnly, setFullArtOnly] = useState(false);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => {
@@ -58,7 +55,7 @@ export function ImageAssignDialog({ rect, existingPlacement, onConfirm, onRemove
     searchTimer.current = setTimeout(async () => {
       try {
         const cards = (
-          await searchTcgdexCards(query.trim(), state.searchSetId ?? undefined, fullArtOnly)
+          await searchTcgdexCards(query.trim(), state.searchSetId ?? undefined, state.searchFullArtOnly)
         ).filter((c) => tcgdexImageUrl(c));
         // Exactly one match — skip the preview/Assign step and place it
         // immediately, closing the dialog.
@@ -75,7 +72,7 @@ export function ImageAssignDialog({ rect, existingPlacement, onConfirm, onRemove
     }, 400);
     return () => clearTimeout(searchTimer.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, state.searchSetId, fullArtOnly]);
+  }, [query, state.searchSetId, state.searchFullArtOnly]);
 
   async function handleFile(file: File | undefined) {
     if (!file) return;
@@ -160,13 +157,6 @@ export function ImageAssignDialog({ rect, existingPlacement, onConfirm, onRemove
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                 />
-              </div>
-
-              <div className="flex items-center gap-2">
-                <Switch id="full-art-only" checked={fullArtOnly} onCheckedChange={setFullArtOnly} />
-                <Label htmlFor="full-art-only" className="font-normal">
-                  Only full art cards and above
-                </Label>
               </div>
 
               {searching && (
