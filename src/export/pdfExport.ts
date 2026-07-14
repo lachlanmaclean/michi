@@ -149,7 +149,7 @@ export async function exportBinderToPdf(binder: Binder, settings: ExportSettings
     const { cutX, cutY } = cutRectFor(row, col);
     const unitWidth = unitCols * CARD_WIDTH_PT;
     const unitHeight = unitRows * CARD_HEIGHT_PT;
-    const markLength = 6;
+    const markLength = 14;
     const corners = [
       { x: cutX, y: cutY }, // bottom-left
       { x: cutX + unitWidth, y: cutY }, // bottom-right
@@ -168,14 +168,14 @@ export async function exportBinderToPdf(binder: Binder, settings: ExportSettings
       page.drawLine({
         start: { x: corner.x, y: corner.y },
         end: { x: corner.x + dx * markLength, y: corner.y },
-        thickness: 1,
+        thickness: 1.25,
         color: cardEdgeColor,
       });
       // vertical tick
       page.drawLine({
         start: { x: corner.x, y: corner.y },
         end: { x: corner.x, y: corner.y + dy * markLength },
-        thickness: 1,
+        thickness: 1.25,
         color: cardEdgeColor,
       });
     });
