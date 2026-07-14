@@ -1,6 +1,6 @@
-import { PDFDocument, rgb, type Color, PDFOperator, PDFOperatorNames, PDFNumber, popGraphicsState, pushGraphicsState, type PDFImage, type PDFPage } from 'pdf-lib';
+import { PDFDocument, rgb, PDFOperator, PDFOperatorNames, PDFNumber, popGraphicsState, pushGraphicsState, type PDFImage, type PDFPage } from 'pdf-lib';
 import type { Binder, ExportSettings, ImageSource } from '../types/binder';
-import { CARD_WIDTH_PT, CARD_HEIGHT_PT, SAFE_AREA_INSET_MM, resolvePageSizePt, mmToPt, printGridDims } from './pdfMath';
+import { CARD_WIDTH_PT, CARD_HEIGHT_PT, resolvePageSizePt, mmToPt, printGridDims } from './pdfMath';
 import { flowPackPlacements, countPrintPages } from './flowPack';
 
 function hexToRgb(hex: string) {
@@ -70,10 +70,8 @@ export function describeOversizedPlacements(binder: Binder, settings: ExportSett
 export async function exportBinderToPdf(binder: Binder, settings: ExportSettings): Promise<ExportResult> {
   const { w: pageWidth, h: pageHeight } = resolvePageSizePt(settings);
   const { printCols, printRows } = printGridDims(settings);
-  const cropColor = hexToRgb(settings.cropMarkColor);
   const cardEdgeColor = hexToRgb(settings.cardEdgeColor);
   const pageGuideColor = hexToRgb(settings.pageGuideColor);
-  const safeAreaInsetPt = mmToPt(SAFE_AREA_INSET_MM);
   const spacingXPt = mmToPt(settings.cardSpacingXMm);
   const spacingYPt = mmToPt(settings.cardSpacingYMm);
   const offsetXPt = mmToPt(settings.cardOffsetXMm);
@@ -99,47 +97,6 @@ export async function exportBinderToPdf(binder: Binder, settings: ExportSettings
     const cutX = marginLeft + col * pitchX;
     const cutY = pageHeight - marginTop - row * pitchY - CARD_HEIGHT_PT;
     return { cutX, cutY };
-  }
-
-  // row/col here address a print-unit's top-left cell; unitCols/unitRows let
-  // a combined 2-card unit draw its guides around its OUTER perimeter only
-  // (no line through the shared boundary between the two cards) instead of
-  // per individual card.
-  function drawCropMarks(page: PDFPage, row: number, col: number, unitCols: number, unitRows: number) {
-    const { cutX, cutY } = cutRectFor(row, col);
-    const unitWidth = unitCols * CARD_WIDTH_PT;
-    const unitHeight = unitRows * CARD_HEIGHT_PT;
-    const markLength = 6;
-    const offset = 2;
-    const corners = [
-      { x: cutX, y: cutY }, // bottom-left
-      { x: cutX + unitWidth, y: cutY }, // bottom-right
-      { x: cutX, y: cutY + unitHeight }, // top-left
-      { x: cutX + unitWidth, y: cutY + unitHeight }, // top-right
-    ];
-    const dirs = [
-      { dx: -1, dy: -1 },
-      { dx: 1, dy: -1 },
-      { dx: -1, dy: 1 },
-      { dx: 1, dy: 1 },
-    ];
-    corners.forEach((corner, i) => {
-      const { dx, dy } = dirs[i];
-      // horizontal tick
-      page.drawLine({
-        start: { x: corner.x + dx * offset, y: corner.y },
-        end: { x: corner.x + dx * (offset + markLength), y: corner.y },
-        thickness: 1.25,
-        color: cropColor,
-      });
-      // vertical tick
-      page.drawLine({
-        start: { x: corner.x, y: corner.y + dy * offset },
-        end: { x: corner.x, y: corner.y + dy * (offset + markLength) },
-        thickness: 1.25,
-        color: cropColor,
-      });
-    });
   }
 
   // Crosshairs at every card grid-line intersection across the whole page
@@ -171,20 +128,6 @@ export async function exportBinderToPdf(binder: Binder, settings: ExportSettings
         });
       }
     }
-  }
-
-  function drawSafeArea(page: PDFPage, row: number, col: number, unitCols: number, unitRows: number) {
-    const { cutX, cutY } = cutRectFor(row, col);
-    drawRoundedRectStroke(
-      page,
-      cutX + safeAreaInsetPt,
-      cutY + safeAreaInsetPt,
-      unitCols * CARD_WIDTH_PT - 2 * safeAreaInsetPt,
-      unitRows * CARD_HEIGHT_PT - 2 * safeAreaInsetPt,
-      0,
-      cardEdgeColor,
-      0.5
-    );
   }
 
   // Full-length straight lines from the outer edge of the printed grid to
@@ -287,9 +230,6 @@ export async function exportBinderToPdf(binder: Binder, settings: ExportSettings
     pdfPage.pushOperators(...pushClipOperators(cutX, cutY, unitWidthPt, unitHeightPt));
     pdfPage.drawImage(img, { x: fullOriginX, y: fullOriginY, width: renderedWidth, height: renderedHeight });
     pdfPage.pushOperators(...popClipOperators());
-
-    if (settings.showCropMarks) drawCropMarks(pdfPage, item.row, item.col, item.spanCols, item.spanRows);
-    if (settings.showSafeArea) drawSafeArea(pdfPage, item.row, item.col, item.spanCols, item.spanRows);
   }
 
   // Drawn after every card image on every page, so crosshairs are always
@@ -319,76 +259,6 @@ function pushClipOperators(x: number, y: number, width: number, height: number):
 
 function popClipOperators(): PDFOperator[] {
   return [popGraphicsState()];
-}
-
-// Bezier control-point offset for approximating a quarter circle of radius r.
-const ARC_MAGIC = 0.5522847498;
-
-/**
- * Strokes a rounded-rectangle outline — pdf-lib's drawRectangle has no
- * border-radius option, so this builds the path manually: four straight
- * edges connected by quarter-circle bezier arcs at the corners, matching
- * the true card corner radius (used for the Proxxied-style card-edge line).
- */
-function drawRoundedRectStroke(
-  page: PDFPage,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-  radius: number,
-  color: Color,
-  thickness: number
-) {
-  const n = (v: number) => PDFNumber.of(v);
-  const k = radius * ARC_MAGIC;
-  const left = x;
-  const right = x + width;
-  const bottom = y;
-  const top = y + height;
-
-  const ops: PDFOperator[] = [
-    pushGraphicsState(),
-    PDFOperator.of(PDFOperatorNames.SetLineWidth, [n(thickness)]),
-    ...colorToStrokeOperator(color),
-    PDFOperator.of(PDFOperatorNames.MoveTo, [n(left + radius), n(bottom)]),
-    PDFOperator.of(PDFOperatorNames.LineTo, [n(right - radius), n(bottom)]),
-    PDFOperator.of(PDFOperatorNames.AppendBezierCurve, [
-      n(right - radius + k), n(bottom), n(right), n(bottom + radius - k), n(right), n(bottom + radius),
-    ]),
-    PDFOperator.of(PDFOperatorNames.LineTo, [n(right), n(top - radius)]),
-    PDFOperator.of(PDFOperatorNames.AppendBezierCurve, [
-      n(right), n(top - radius + k), n(right - radius + k), n(top), n(right - radius), n(top),
-    ]),
-    PDFOperator.of(PDFOperatorNames.LineTo, [n(left + radius), n(top)]),
-    PDFOperator.of(PDFOperatorNames.AppendBezierCurve, [
-      n(left + radius - k), n(top), n(left), n(top - radius + k), n(left), n(top - radius),
-    ]),
-    PDFOperator.of(PDFOperatorNames.LineTo, [n(left), n(bottom + radius)]),
-    PDFOperator.of(PDFOperatorNames.AppendBezierCurve, [
-      n(left), n(bottom + radius - k), n(left + radius - k), n(bottom), n(left + radius), n(bottom),
-    ]),
-    PDFOperator.of(PDFOperatorNames.ClosePath),
-    PDFOperator.of(PDFOperatorNames.StrokePath),
-    popGraphicsState(),
-  ];
-
-  page.pushOperators(...ops);
-}
-
-function colorToStrokeOperator(color: Color): PDFOperator[] {
-  const n = (v: number) => PDFNumber.of(v);
-  if ('red' in color) {
-    return [PDFOperator.of(PDFOperatorNames.StrokingColorRgb, [n(color.red), n(color.green), n(color.blue)])];
-  }
-  if ('gray' in color) {
-    return [PDFOperator.of(PDFOperatorNames.StrokingColorGray, [n(color.gray)])];
-  }
-  return [
-    PDFOperator.of(PDFOperatorNames.StrokingColorCmyk, [
-      n(color.cyan), n(color.magenta), n(color.yellow), n(color.key),
-    ]),
-  ];
 }
 
 function sourceKey(source: ImageSource): string {

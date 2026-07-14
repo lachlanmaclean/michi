@@ -10,10 +10,6 @@ export const CARD_WIDTH_PT = 2.5 * PT_PER_INCH; // 180
 export const CARD_HEIGHT_PT = 3.5 * PT_PER_INCH; // 252
 export const CARD_CORNER_RADIUS_PT = 0.125 * PT_PER_INCH; // 9
 
-// Standard print convention: keep important content this far inside the
-// true card edge, since physical cutting has some tolerance.
-export const SAFE_AREA_INSET_MM = 3;
-
 export const PAGE_SIZES_PT: Record<Exclude<PageSize, 'Custom'>, { w: number; h: number }> = {
   Letter: { w: 612, h: 792 },
   A4: { w: 595.28, h: 841.89 },

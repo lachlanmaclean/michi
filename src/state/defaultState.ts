@@ -1,7 +1,7 @@
 import { v4 as uuid } from 'uuid';
 import type { AppState, BinderPage } from '../types/binder';
 
-export const SCHEMA_VERSION = 9;
+export const SCHEMA_VERSION = 10;
 
 export function createDefaultPage(): BinderPage {
   const layer = { id: uuid(), name: 'Layer 1' };
@@ -29,11 +29,8 @@ export function createDefaultState(): AppState {
       pageSize: 'Letter',
       customWidthMm: 216,
       customHeightMm: 279,
-      cropMarkColor: '#000000',
-      showCropMarks: false,
       cardEdgeColor: '#22c55e',
       showCardEdge: true,
-      showSafeArea: false,
       pageGuideColor: '#000000',
       showPageGuides: true,
       cardSpacingXMm: 0,

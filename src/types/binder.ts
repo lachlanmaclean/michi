@@ -93,15 +93,12 @@ export interface ExportSettings {
   /** Only used when pageSize === 'Custom'. */
   customWidthMm: number;
   customHeightMm: number;
-  cropMarkColor: string;
-  showCropMarks: boolean;
   cardEdgeColor: string;
   showCardEdge: boolean;
-  showSafeArea: boolean;
   /**
    * Full-length straight guide lines from the outer edge of the printed
    * grid to the paper's edge, on all four sides — for aligning a paper
-   * cutter/guillotine, as opposed to the per-card crop marks/edge ticks.
+   * cutter/guillotine, as opposed to the per-card crosshairs.
    */
   pageGuideColor: string;
   showPageGuides: boolean;

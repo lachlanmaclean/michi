@@ -237,31 +237,6 @@ export function ExportPanel() {
           <AccordionContent className="flex flex-col gap-4">
             <div className="flex items-center gap-2">
               <Switch
-                id="crop-marks"
-                checked={exportSettings.showCropMarks}
-                onCheckedChange={(checked) => update({ showCropMarks: checked })}
-              />
-              <Label htmlFor="crop-marks" className="font-normal">
-                Show crop marks
-              </Label>
-            </div>
-            {exportSettings.showCropMarks && (
-              <div className="flex items-center gap-2">
-                <Label htmlFor="crop-color" className="font-normal">
-                  Crop mark color
-                </Label>
-                <input
-                  id="crop-color"
-                  type="color"
-                  className="h-8 w-12 rounded border border-input bg-transparent"
-                  value={exportSettings.cropMarkColor}
-                  onChange={(e) => update({ cropMarkColor: e.target.value })}
-                />
-              </div>
-            )}
-
-            <div className="flex items-center gap-2">
-              <Switch
                 id="card-edge"
                 checked={exportSettings.showCardEdge}
                 onCheckedChange={(checked) => update({ showCardEdge: checked })}
@@ -284,17 +259,6 @@ export function ExportPanel() {
                 />
               </div>
             )}
-
-            <div className="flex items-center gap-2">
-              <Switch
-                id="safe-area"
-                checked={exportSettings.showSafeArea}
-                onCheckedChange={(checked) => update({ showSafeArea: checked })}
-              />
-              <Label htmlFor="safe-area" className="font-normal">
-                Show safe area (3mm inset)
-              </Label>
-            </div>
 
             <div className="flex items-center gap-2">
               <Switch
