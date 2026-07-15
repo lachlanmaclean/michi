@@ -8,6 +8,7 @@ import {
   normalizeRect,
   rectContains,
   rectsOverlap,
+  sameRectShape,
   translateRect,
 } from '@/utils/grid';
 import { computeWinnerMap } from '@/utils/compositing';
@@ -46,6 +47,10 @@ export function BinderPageView({ page, selectedId, onSelectedIdChange: setSelect
   // card can render as a floating preview that follows the cursor smoothly
   // instead of only visually jumping cell-to-cell as the grid position snaps.
   const [dragPointer, setDragPointer] = useState<{ x: number; y: number } | null>(null);
+  // The grid cell(s) currently under the cursor during a move drag — a
+  // dashed drop-target outline tracks this live, like hovering any other
+  // tile, rather than staying fixed at the placement's original position.
+  const [dropTargetRect, setDropTargetRect] = useState<CellRect | null>(null);
   const resizeState = useRef<{
     placementId: string;
     handle: ResizeHandle;
@@ -189,6 +194,7 @@ export function BinderPageView({ page, selectedId, onSelectedIdChange: setSelect
     if (moveState.current) {
       moveState.current = null;
       setDragPointer(null);
+      setDropTargetRect(null);
       return;
     }
     if (!selectionRect) {
@@ -242,16 +248,42 @@ export function BinderPageView({ page, selectedId, onSelectedIdChange: setSelect
 
     const deltaRow = cell.row - ms.anchorCell.row;
     const deltaCol = cell.col - ms.anchorCell.col;
-    if (deltaRow === 0 && deltaCol === 0) return;
 
     const translated = translateRect(ms.originalRect, deltaRow, deltaCol);
     const nextRect = clampRectPositionToGrid(translated, rows, cols);
-    const overlapsOther = page.placements.some(
+    // The drop-target outline always tracks the cell(s) under the cursor —
+    // including sliding back over the card's own original slot, which is
+    // always a valid target since nothing else occupies it — regardless of
+    // whether this particular position is droppable.
+    setDropTargetRect(nextRect);
+
+    if (deltaRow === 0 && deltaCol === 0) return;
+
+    const blockers = page.placements.filter(
       (p) => p.id !== placement.id && p.layerId === placement.layerId && rectsOverlap(p.rect, nextRect)
     );
-    if (overlapsOther) return;
+    if (blockers.length === 0) {
+      dispatch({ type: 'RESIZE_PLACEMENT', pageId: page.id, placementId: placement.id, rect: nextRect });
+      return;
+    }
+    // Hovering the dragged card fully over exactly one same-shape occupied
+    // slot swaps the two — live, as soon as the hover lands there, not just
+    // on drop. Anything else (multiple blockers, a different-shaped
+    // occupant, or only a partial overlap) just blocks the move, same as
+    // before.
+    const [blocker] = blockers;
+    const isCleanSwap =
+      blockers.length === 1 &&
+      sameRectShape(blocker.rect, nextRect) &&
+      blocker.rect.rowStart === nextRect.rowStart &&
+      blocker.rect.colStart === nextRect.colStart;
+    if (!isCleanSwap) return;
 
-    dispatch({ type: 'RESIZE_PLACEMENT', pageId: page.id, placementId: placement.id, rect: nextRect });
+    dispatch({ type: 'SWAP_PLACEMENTS', pageId: page.id, placementId: placement.id, otherPlacementId: blocker.id });
+    // The dragged placement's own "original position" for future hover
+    // deltas is now wherever it just landed — otherwise the next frame's
+    // delta math would be computed against a rect it no longer occupies.
+    moveState.current = { ...ms, originalRect: nextRect, anchorCell: cell };
   }
 
   function onResizeStart(placementId: string, handle: ResizeHandle, e: React.PointerEvent) {
@@ -287,6 +319,7 @@ export function BinderPageView({ page, selectedId, onSelectedIdChange: setSelect
     }
     moveState.current = { placementId, originalRect: placement.rect, anchorCell: cell, pointerOffset };
     setDragPointer({ x: e.clientX, y: e.clientY });
+    setDropTargetRect(placement.rect);
   }
 
   function closeDialog() {
@@ -520,12 +553,12 @@ export function BinderPageView({ page, selectedId, onSelectedIdChange: setSelect
             />
           )}
 
-          {dragPointer && moveState.current && (
+          {dragPointer && dropTargetRect && (
             <div
-              className="relative z-10 rounded-md border-2 border-dashed border-primary/50 pointer-events-none"
+              className="relative z-20 rounded-md border-2 border-dashed border-primary/50 pointer-events-none"
               style={{
-                gridRow: `${moveState.current.originalRect.rowStart + 1} / ${moveState.current.originalRect.rowEnd + 2}`,
-                gridColumn: `${moveState.current.originalRect.colStart + 1} / ${moveState.current.originalRect.colEnd + 2}`,
+                gridRow: `${dropTargetRect.rowStart + 1} / ${dropTargetRect.rowEnd + 2}`,
+                gridColumn: `${dropTargetRect.colStart + 1} / ${dropTargetRect.colEnd + 2}`,
               }}
             />
           )}

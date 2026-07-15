@@ -14,6 +14,7 @@ type Action =
   | { type: 'ASSIGN_IMAGE'; pageId: string; placement: ImagePlacement }
   | { type: 'REMOVE_IMAGE'; pageId: string; placementId: string }
   | { type: 'RESIZE_PLACEMENT'; pageId: string; placementId: string; rect: CellRect }
+  | { type: 'SWAP_PLACEMENTS'; pageId: string; placementId: string; otherPlacementId: string }
   | { type: 'UPDATE_CROP'; pageId: string; placementId: string; crop: CropTransform }
   | { type: 'UPDATE_EXPORT_SETTINGS'; settings: Partial<AppState['exportSettings']> }
   | { type: 'SET_SEARCH_SET'; setId: string | null }
@@ -103,6 +104,26 @@ function reducer(state: AppState, action: Action): AppState {
               ),
             }
       );
+      return { ...state, binder: { ...state.binder, pages } };
+    }
+    case 'SWAP_PLACEMENTS': {
+      const pages = state.binder.pages.map((p) => {
+        if (p.id !== action.pageId) return p;
+        const a = p.placements.find((pl) => pl.id === action.placementId);
+        const b = p.placements.find((pl) => pl.id === action.otherPlacementId);
+        if (!a || !b) return p;
+        // Swapping only ever exchanges positions between two same-shape
+        // rects — the caller guarantees this — so neither's span changes
+        // and there's nothing else (combined, etc.) to reconcile.
+        return {
+          ...p,
+          placements: p.placements.map((pl) => {
+            if (pl.id === a.id) return { ...pl, rect: b.rect };
+            if (pl.id === b.id) return { ...pl, rect: a.rect };
+            return pl;
+          }),
+        };
+      });
       return { ...state, binder: { ...state.binder, pages } };
     }
     case 'UPDATE_CROP': {

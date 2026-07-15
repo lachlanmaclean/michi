@@ -38,6 +38,11 @@ export function clampRectToGrid(rect: CellRect, rows: number, cols: number): Cel
   };
 }
 
+/** True if two rects span the same number of rows and columns (position may differ) — the only case a drag-to-swap makes unambiguous sense. */
+export function sameRectShape(a: CellRect, b: CellRect): boolean {
+  return a.rowEnd - a.rowStart === b.rowEnd - b.rowStart && a.colEnd - a.colStart === b.colEnd - b.colStart;
+}
+
 /** Shifts a rect by a row/col delta without changing its span (rowEnd-rowStart, colEnd-colStart stay fixed). */
 export function translateRect(rect: CellRect, deltaRow: number, deltaCol: number): CellRect {
   return {
