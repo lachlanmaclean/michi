@@ -519,6 +519,16 @@ export function BinderPageView({ page, selectedId, onSelectedIdChange: setSelect
               }}
             />
           )}
+
+          {dragPointer && moveState.current && (
+            <div
+              className="relative z-10 rounded-md border-2 border-dashed border-primary/50 pointer-events-none"
+              style={{
+                gridRow: `${moveState.current.originalRect.rowStart + 1} / ${moveState.current.originalRect.rowEnd + 2}`,
+                gridColumn: `${moveState.current.originalRect.colStart + 1} / ${moveState.current.originalRect.colEnd + 2}`,
+              }}
+            />
+          )}
         </div>
       </div>
 

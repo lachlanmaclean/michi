@@ -59,6 +59,14 @@ export function PlacementView({
     startOffsetX: number;
     startOffsetY: number;
   } | null>(null);
+  // A not-yet-selected card can be clicked-and-immediately-dragged to move
+  // it, without a separate "select, then drag" step. Pointerdown here just
+  // stages the possibility of a move/select; onImagePointerMove decides
+  // which one it actually was based on whether the pointer crossed a small
+  // distance threshold before release (a plain click, no movement, still
+  // just selects — it doesn't "move" the card by zero cells).
+  const pendingSelectDrag = useRef<{ startX: number; startY: number; pointerId: number } | null>(null);
+  const MOVE_THRESHOLD_PX = 4;
   const [naturalSize, setNaturalSize] = useState<{ w: number; h: number } | null>(null);
 
   const spanCols = placement.rect.colEnd - placement.rect.colStart + 1;
@@ -97,7 +105,16 @@ export function PlacementView({
     // placement on the active layer instead.
     if (!interactive) return;
     if (!selected) {
+      // Select immediately (so the toolbar/handles appear right away), but
+      // don't commit to a move yet — stage it, and only promote to an
+      // actual move if the pointer travels past a small threshold before
+      // release. A plain click (no movement) just selects, same as before.
+      // Capture the pointer now so move/up events keep routing here even if
+      // the cursor travels outside this element's bounds before the
+      // threshold is crossed.
+      (e.target as Element).setPointerCapture(e.pointerId);
       onSelect(e);
+      pendingSelectDrag.current = { startX: e.clientX, startY: e.clientY, pointerId: e.pointerId };
       return;
     }
     // Already selected: the hand tool (pan mode) pans/repositions the image
@@ -115,6 +132,16 @@ export function PlacementView({
   }
 
   function onImagePointerMove(e: React.PointerEvent) {
+    if (pendingSelectDrag.current && e.pointerId === pendingSelectDrag.current.pointerId) {
+      const dx = e.clientX - pendingSelectDrag.current.startX;
+      const dy = e.clientY - pendingSelectDrag.current.startY;
+      if (Math.hypot(dx, dy) >= MOVE_THRESHOLD_PX) {
+        pendingSelectDrag.current = null;
+        e.stopPropagation();
+        onMoveStart(e);
+      }
+      return;
+    }
     if (!panState.current) return;
     e.stopPropagation();
     const dx = e.clientX - panState.current.startX;
@@ -132,6 +159,9 @@ export function PlacementView({
   }
 
   function onImagePointerUp(e: React.PointerEvent) {
+    if (pendingSelectDrag.current && e.pointerId === pendingSelectDrag.current.pointerId) {
+      pendingSelectDrag.current = null;
+    }
     if (panState.current) {
       e.stopPropagation();
       panState.current = null;
