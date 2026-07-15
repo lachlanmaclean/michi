@@ -1,13 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAppState } from '@/state/AppStateContext';
 import type { BinderPage, CellRect, ImagePlacement } from '@/types/binder';
-import { clampRectToGrid, isCombinablePair, normalizeRect, rectContains, rectsOverlap } from '@/utils/grid';
+import {
+  clampRectToGrid,
+  clampRectPositionToGrid,
+  isCombinablePair,
+  normalizeRect,
+  rectContains,
+  rectsOverlap,
+  translateRect,
+} from '@/utils/grid';
 import { computeWinnerMap } from '@/utils/compositing';
 import { ImageAssignDialog } from './ImageAssignDialog';
 import { PlacementView } from './PlacementView';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { Check, Combine, Pencil, Trash2, X, ZoomIn, ZoomOut } from 'lucide-react';
+import { Check, Combine, Hand, Pencil, Trash2, X, ZoomIn, ZoomOut } from 'lucide-react';
 
 // Pokemon card aspect ratio is fixed at 2.5:3.5 (portrait), independent of
 // grid rows/cols — cells never stretch to a different shape.
@@ -33,10 +41,16 @@ export function BinderPageView({ page, selectedId, onSelectedIdChange: setSelect
   const [dialogRect, setDialogRect] = useState<CellRect | null>(null);
   const [editingPlacement, setEditingPlacement] = useState<ImagePlacement | null>(null);
   const [draftOffset, setDraftOffset] = useState<{ x: number; y: number } | null>(null);
+  const [panMode, setPanMode] = useState(false);
   const resizeState = useRef<{
     placementId: string;
     handle: ResizeHandle;
     originalRect: CellRect;
+  } | null>(null);
+  const moveState = useRef<{
+    placementId: string;
+    originalRect: CellRect;
+    anchorCell: { row: number; col: number };
   } | null>(null);
 
   const { rows, cols } = page.gridConfig;
@@ -64,6 +78,13 @@ export function BinderPageView({ page, selectedId, onSelectedIdChange: setSelect
       setDraftOffset(null);
     }
   }, [page.placements, selectedId]);
+
+  // Pan mode is a per-selection tool state, not a sticky global mode — drop
+  // it whenever the selection itself changes or clears, so it can't stay
+  // silently active on a newly-selected card.
+  useEffect(() => {
+    setPanMode(false);
+  }, [selectedId]);
 
   useEffect(() => {
     if (!selectedId) return;
@@ -95,7 +116,10 @@ export function BinderPageView({ page, selectedId, onSelectedIdChange: setSelect
   }, [selectedId, draftOffset]);
 
   function selectPlacement(id: string) {
-    if (id !== selectedId) setDraftOffset(null);
+    if (id !== selectedId) {
+      setDraftOffset(null);
+      setPanMode(false);
+    }
     setSelectedId(id);
   }
 
@@ -127,7 +151,7 @@ export function BinderPageView({ page, selectedId, onSelectedIdChange: setSelect
   }
 
   function onGridPointerDown(e: React.PointerEvent) {
-    if (resizeState.current) return;
+    if (resizeState.current || moveState.current) return;
     if (draftOffset) confirmPan();
     setSelectedId(null);
     const cell = cellFromPointer(e);
@@ -142,6 +166,10 @@ export function BinderPageView({ page, selectedId, onSelectedIdChange: setSelect
       handleResizeMove(e);
       return;
     }
+    if (moveState.current) {
+      handleMoveMove(e);
+      return;
+    }
     if (!dragAnchor) return;
     const cell = cellFromPointer(e);
     if (!cell) return;
@@ -151,6 +179,10 @@ export function BinderPageView({ page, selectedId, onSelectedIdChange: setSelect
   function onGridPointerUp() {
     if (resizeState.current) {
       resizeState.current = null;
+      return;
+    }
+    if (moveState.current) {
+      moveState.current = null;
       return;
     }
     if (!selectionRect) {
@@ -193,6 +225,28 @@ export function BinderPageView({ page, selectedId, onSelectedIdChange: setSelect
     dispatch({ type: 'RESIZE_PLACEMENT', pageId: page.id, placementId: placement.id, rect: nextRect });
   }
 
+  function handleMoveMove(e: React.PointerEvent) {
+    const ms = moveState.current;
+    if (!ms) return;
+    const cell = cellFromPointer(e);
+    if (!cell) return;
+    const placement = page.placements.find((p) => p.id === ms.placementId);
+    if (!placement) return;
+
+    const deltaRow = cell.row - ms.anchorCell.row;
+    const deltaCol = cell.col - ms.anchorCell.col;
+    if (deltaRow === 0 && deltaCol === 0) return;
+
+    const translated = translateRect(ms.originalRect, deltaRow, deltaCol);
+    const nextRect = clampRectPositionToGrid(translated, rows, cols);
+    const overlapsOther = page.placements.some(
+      (p) => p.id !== placement.id && p.layerId === placement.layerId && rectsOverlap(p.rect, nextRect)
+    );
+    if (overlapsOther) return;
+
+    dispatch({ type: 'RESIZE_PLACEMENT', pageId: page.id, placementId: placement.id, rect: nextRect });
+  }
+
   function onResizeStart(placementId: string, handle: ResizeHandle, e: React.PointerEvent) {
     const placement = page.placements.find((p) => p.id === placementId);
     if (!placement) return;
@@ -201,6 +255,18 @@ export function BinderPageView({ page, selectedId, onSelectedIdChange: setSelect
     // rect updates, which would silently drop pointer capture mid-drag.
     gridRef.current?.setPointerCapture(e.pointerId);
     resizeState.current = { placementId, handle, originalRect: placement.rect };
+  }
+
+  function onMoveStart(placementId: string, e: React.PointerEvent) {
+    const placement = page.placements.find((p) => p.id === placementId);
+    if (!placement) return;
+    const cell = cellFromPointer(e);
+    if (!cell) return;
+    // Capture on the grid container, not the placement itself — same
+    // reasoning as resize: the placement's DOM position shifts every frame
+    // as the rect updates, which would drop capture mid-drag.
+    gridRef.current?.setPointerCapture(e.pointerId);
+    moveState.current = { placementId, originalRect: placement.rect, anchorCell: cell };
   }
 
   function closeDialog() {
@@ -277,6 +343,15 @@ export function BinderPageView({ page, selectedId, onSelectedIdChange: setSelect
                   }
                 >
                   <ZoomIn className="size-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className={cn('size-7', panMode && 'text-primary')}
+                  title={panMode ? 'Stop panning' : 'Pan image within cell'}
+                  onClick={() => setPanMode((v) => !v)}
+                >
+                  <Hand className="size-4" />
                 </Button>
                 <div className="w-px h-5 bg-border mx-1" />
               </>
@@ -385,6 +460,7 @@ export function BinderPageView({ page, selectedId, onSelectedIdChange: setSelect
                 gapPx={GAP_PX}
                 hiddenCells={hiddenCells}
                 interactive={placement.layerId === page.activeLayerId || placement.id === selectedId}
+                panMode={panMode}
                 draftOffset={placement.id === selectedId ? draftOffset : null}
                 onSelect={(e) => {
                   e.stopPropagation();
@@ -396,6 +472,7 @@ export function BinderPageView({ page, selectedId, onSelectedIdChange: setSelect
                   selectPlacement(placement.id);
                   onResizeStart(placement.id, handle, e);
                 }}
+                onMoveStart={(e) => onMoveStart(placement.id, e)}
               />
             );
           })}

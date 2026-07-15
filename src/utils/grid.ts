@@ -37,3 +37,31 @@ export function clampRectToGrid(rect: CellRect, rows: number, cols: number): Cel
     colEnd: Math.max(0, Math.min(rect.colEnd, cols - 1)),
   };
 }
+
+/** Shifts a rect by a row/col delta without changing its span (rowEnd-rowStart, colEnd-colStart stay fixed). */
+export function translateRect(rect: CellRect, deltaRow: number, deltaCol: number): CellRect {
+  return {
+    rowStart: rect.rowStart + deltaRow,
+    colStart: rect.colStart + deltaCol,
+    rowEnd: rect.rowEnd + deltaRow,
+    colEnd: rect.colEnd + deltaCol,
+  };
+}
+
+/**
+ * Slides a rect back within grid bounds by moving its anchor (top-left),
+ * preserving its span — unlike clampRectToGrid, which clamps each corner
+ * independently and would shrink/distort a rect that overhangs an edge.
+ */
+export function clampRectPositionToGrid(rect: CellRect, rows: number, cols: number): CellRect {
+  const spanRows = rect.rowEnd - rect.rowStart;
+  const spanCols = rect.colEnd - rect.colStart;
+  const rowStart = Math.max(0, Math.min(rect.rowStart, rows - 1 - spanRows));
+  const colStart = Math.max(0, Math.min(rect.colStart, cols - 1 - spanCols));
+  return {
+    rowStart,
+    colStart,
+    rowEnd: rowStart + spanRows,
+    colEnd: colStart + spanCols,
+  };
+}

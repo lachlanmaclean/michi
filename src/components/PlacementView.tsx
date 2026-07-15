@@ -20,11 +20,18 @@ interface Props {
    * route (e.g. a layer-panel thumbnail) still works as normal.
    */
   interactive: boolean;
+  /**
+   * When true (the hand-tool toggle is active) and this placement isn't
+   * fill-mode, dragging it pans/repositions the image content within its
+   * cell instead of moving the whole placement to a new slot.
+   */
+  panMode: boolean;
   /** Uncommitted pan offset while a pan drag is in progress (or awaiting confirm/cancel). */
   draftOffset: { x: number; y: number } | null;
   onSelect: (e: React.PointerEvent) => void;
   onPanDrag: (offsetX: number, offsetY: number) => void;
   onResizeStart: (handle: ResizeHandle, e: React.PointerEvent) => void;
+  onMoveStart: (e: React.PointerEvent) => void;
 }
 
 export function PlacementView({
@@ -35,10 +42,12 @@ export function PlacementView({
   gapPx,
   hiddenCells,
   interactive,
+  panMode,
   draftOffset,
   onSelect,
   onPanDrag,
   onResizeStart,
+  onMoveStart,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const panState = useRef<{
@@ -84,19 +93,22 @@ export function PlacementView({
     // it bubble to the grid so a click here can start a new selection/
     // placement on the active layer instead.
     if (!interactive) return;
-    // Pre-rendered card art (fill mode) is stretched to fit exactly, with no
-    // pan/zoom to perform.
-    if (isFill) {
-      onSelect(e);
-      return;
-    }
     if (!selected) {
       onSelect(e);
       return;
     }
+    // Already selected: the hand tool (pan mode) pans/repositions the image
+    // content — but only for cover-mode images (fill-mode card art has
+    // nothing to pan, it always exactly fills its cell). Otherwise, dragging
+    // moves the whole placement to a new slot.
+    if (panMode && !isFill) {
+      e.stopPropagation();
+      (e.target as Element).setPointerCapture(e.pointerId);
+      panState.current = { startX: e.clientX, startY: e.clientY, startOffsetX: displayOffsetX, startOffsetY: displayOffsetY };
+      return;
+    }
     e.stopPropagation();
-    (e.target as Element).setPointerCapture(e.pointerId);
-    panState.current = { startX: e.clientX, startY: e.clientY, startOffsetX: displayOffsetX, startOffsetY: displayOffsetY };
+    onMoveStart(e);
   }
 
   function onImagePointerMove(e: React.PointerEvent) {
@@ -192,7 +204,7 @@ export function PlacementView({
         <div
           className={cn(
             'relative rounded-md overflow-hidden border-2 transition-colors',
-            interactive && 'cursor-pointer',
+            interactive && (selected ? (panMode && !isFill ? 'cursor-grab' : 'cursor-move') : 'cursor-pointer'),
             selected ? 'border-primary z-10' : interactive && 'border-transparent hover:border-primary/60'
           )}
           style={{ gridColumn: `1 / -1`, gridRow: `1 / -1` }}
