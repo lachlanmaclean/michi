@@ -227,13 +227,14 @@ export function ImageAssignDialog({ rect, existingPlacement, onConfirm, onRemove
                       )}
                       title={card.name}
                     >
-                      <img
-                        src={tcgdexImageUrl(card) ?? tcgdexThumbnailUrl(card)!}
-                        alt={card.name}
-                        className="block w-full object-contain"
-                        style={{ aspectRatio: '2.5 / 3.5' }}
-                        loading="lazy"
-                      />
+                      <div className="w-full" style={{ aspectRatio: '2.5 / 3.5' }}>
+                        <img
+                          src={tcgdexImageUrl(card) ?? tcgdexThumbnailUrl(card)!}
+                          alt={card.name}
+                          className="w-full h-full object-contain"
+                          loading="lazy"
+                        />
+                      </div>
                     </button>
                   ))}
                 </div>
