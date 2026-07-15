@@ -247,7 +247,7 @@ export function ImageAssignDialog({ rect, existingPlacement, onConfirm, onRemove
           </TabsContent>
         </Tabs>
 
-        {previewSrc && (
+        {tab === 'upload' && previewSrc && (
           <div className="rounded-md overflow-hidden max-h-52 border border-border">
             <img src={previewSrc} alt="preview" className="w-full h-full object-contain bg-muted" />
           </div>
