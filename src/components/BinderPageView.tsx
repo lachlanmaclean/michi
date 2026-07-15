@@ -194,10 +194,12 @@ export function BinderPageView({ page, selectedId, onSelectedIdChange: setSelect
     if (moveState.current) {
       const { placementId } = moveState.current;
       const placement = page.placements.find((p) => p.id === placementId);
-      // Dropping onto a slot occupied by exactly one same-shape placement
-      // (fully covering the hovered target, not just partially overlapping
-      // it) swaps the two — an explicit confirm action on release, not
-      // something that happens just from hovering over another card.
+      // The grid was never touched during the drag — placement.rect is
+      // still exactly where it started. This is the single commit point:
+      // either move into an empty target, or swap with the one same-shape
+      // placement fully covering it (the displaced card lands here, at the
+      // dragged card's true original position, automatically — since that
+      // rect was never mutated mid-drag).
       if (placement && dropTargetRect) {
         const blockers = page.placements.filter(
           (p) => p.id !== placement.id && p.layerId === placement.layerId && rectsOverlap(p.rect, dropTargetRect)
@@ -210,6 +212,8 @@ export function BinderPageView({ page, selectedId, onSelectedIdChange: setSelect
           blocker.rect.colStart === dropTargetRect.colStart;
         if (isCleanSwap) {
           dispatch({ type: 'SWAP_PLACEMENTS', pageId: page.id, placementId: placement.id, otherPlacementId: blocker.id });
+        } else if (blockers.length === 0) {
+          dispatch({ type: 'RESIZE_PLACEMENT', pageId: page.id, placementId: placement.id, rect: dropTargetRect });
         }
       }
       moveState.current = null;
@@ -263,32 +267,18 @@ export function BinderPageView({ page, selectedId, onSelectedIdChange: setSelect
     setDragPointer({ x: e.clientX, y: e.clientY });
     const cell = cellFromPointer(e);
     if (!cell) return;
-    const placement = page.placements.find((p) => p.id === ms.placementId);
-    if (!placement) return;
 
+    // Purely visual while dragging — the dragged card floats as a preview
+    // and the grid itself is never touched (no dispatch) until drop. Only
+    // the hover outline updates, tracking wherever the cursor currently is,
+    // including back over the card's own original slot (a ghost placeholder
+    // stays there separately — see the render below — so this is just the
+    // "what happens if I let go here" indicator).
     const deltaRow = cell.row - ms.anchorCell.row;
     const deltaCol = cell.col - ms.anchorCell.col;
-
     const translated = translateRect(ms.originalRect, deltaRow, deltaCol);
     const nextRect = clampRectPositionToGrid(translated, rows, cols);
-    // The drop-target outline always tracks the cell(s) under the cursor —
-    // including sliding back over the card's own original slot, which is
-    // always a valid target since nothing else occupies it — regardless of
-    // whether this particular position is droppable.
     setDropTargetRect(nextRect);
-
-    if (deltaRow === 0 && deltaCol === 0) return;
-
-    // While dragging, an occupied target just blocks the live move (the
-    // dragged card stays at its last valid position) — swapping only
-    // happens on drop, as an explicit confirm, not merely from hovering
-    // over another card. See onGridPointerUp.
-    const overlapsOther = page.placements.some(
-      (p) => p.id !== placement.id && p.layerId === placement.layerId && rectsOverlap(p.rect, nextRect)
-    );
-    if (overlapsOther) return;
-
-    dispatch({ type: 'RESIZE_PLACEMENT', pageId: page.id, placementId: placement.id, rect: nextRect });
   }
 
   function onResizeStart(placementId: string, handle: ResizeHandle, e: React.PointerEvent) {
@@ -560,7 +550,7 @@ export function BinderPageView({ page, selectedId, onSelectedIdChange: setSelect
 
           {dragPointer && dropTargetRect && (
             <div
-              className="relative z-20 rounded-md border-2 border-primary bg-primary/25 pointer-events-none"
+              className="relative z-20 rounded-md border-2 border-dashed border-primary/60 pointer-events-none"
               style={{
                 gridRow: `${dropTargetRect.rowStart + 1} / ${dropTargetRect.rowEnd + 2}`,
                 gridColumn: `${dropTargetRect.colStart + 1} / ${dropTargetRect.colEnd + 2}`,
