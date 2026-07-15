@@ -42,6 +42,10 @@ export function BinderPageView({ page, selectedId, onSelectedIdChange: setSelect
   const [editingPlacement, setEditingPlacement] = useState<ImagePlacement | null>(null);
   const [draftOffset, setDraftOffset] = useState<{ x: number; y: number } | null>(null);
   const [panMode, setPanMode] = useState(false);
+  // Raw cursor position while a move drag is in progress, so the dragged
+  // card can render as a floating preview that follows the cursor smoothly
+  // instead of only visually jumping cell-to-cell as the grid position snaps.
+  const [dragPointer, setDragPointer] = useState<{ x: number; y: number } | null>(null);
   const resizeState = useRef<{
     placementId: string;
     handle: ResizeHandle;
@@ -51,6 +55,7 @@ export function BinderPageView({ page, selectedId, onSelectedIdChange: setSelect
     placementId: string;
     originalRect: CellRect;
     anchorCell: { row: number; col: number };
+    pointerOffset: { x: number; y: number };
   } | null>(null);
 
   const { rows, cols } = page.gridConfig;
@@ -183,6 +188,7 @@ export function BinderPageView({ page, selectedId, onSelectedIdChange: setSelect
     }
     if (moveState.current) {
       moveState.current = null;
+      setDragPointer(null);
       return;
     }
     if (!selectionRect) {
@@ -228,6 +234,7 @@ export function BinderPageView({ page, selectedId, onSelectedIdChange: setSelect
   function handleMoveMove(e: React.PointerEvent) {
     const ms = moveState.current;
     if (!ms) return;
+    setDragPointer({ x: e.clientX, y: e.clientY });
     const cell = cellFromPointer(e);
     if (!cell) return;
     const placement = page.placements.find((p) => p.id === ms.placementId);
@@ -266,7 +273,20 @@ export function BinderPageView({ page, selectedId, onSelectedIdChange: setSelect
     // reasoning as resize: the placement's DOM position shifts every frame
     // as the rect updates, which would drop capture mid-drag.
     gridRef.current?.setPointerCapture(e.pointerId);
-    moveState.current = { placementId, originalRect: placement.rect, anchorCell: cell };
+    // Where the cursor grabbed the card, relative to the card's own
+    // top-left — so the floating drag preview stays anchored under the
+    // cursor at that same point instead of snapping its corner there.
+    const gridEl = gridRef.current;
+    const pointerOffset = { x: 0, y: 0 };
+    if (gridEl) {
+      const gridBox = gridEl.getBoundingClientRect();
+      const cardLeft = gridBox.left + placement.rect.colStart * (CARD_WIDTH_PX + GAP_PX);
+      const cardTop = gridBox.top + placement.rect.rowStart * (CARD_HEIGHT_PX + GAP_PX);
+      pointerOffset.x = e.clientX - cardLeft;
+      pointerOffset.y = e.clientY - cardTop;
+    }
+    moveState.current = { placementId, originalRect: placement.rect, anchorCell: cell, pointerOffset };
+    setDragPointer({ x: e.clientX, y: e.clientY });
   }
 
   function closeDialog() {
@@ -295,6 +315,18 @@ export function BinderPageView({ page, selectedId, onSelectedIdChange: setSelect
 
   const cellSpanned = (row: number, col: number) =>
     page.placements.some((p) => rectContains(p.rect, row, col));
+
+  const draggedPlacement = dragPointer
+    ? page.placements.find((p) => p.id === moveState.current?.placementId) ?? null
+    : null;
+  const draggedSpanWidthPx = draggedPlacement
+    ? (draggedPlacement.rect.colEnd - draggedPlacement.rect.colStart + 1) * CARD_WIDTH_PX +
+      (draggedPlacement.rect.colEnd - draggedPlacement.rect.colStart) * GAP_PX
+    : 0;
+  const draggedSpanHeightPx = draggedPlacement
+    ? (draggedPlacement.rect.rowEnd - draggedPlacement.rect.rowStart + 1) * CARD_HEIGHT_PX +
+      (draggedPlacement.rect.rowEnd - draggedPlacement.rect.rowStart) * GAP_PX
+    : 0;
 
   // Paint bottom layer first, topmost last — DOM/paint order then naturally
   // matches z-order, so a higher layer's placement also wins pointer events
@@ -461,6 +493,7 @@ export function BinderPageView({ page, selectedId, onSelectedIdChange: setSelect
                 hiddenCells={hiddenCells}
                 interactive={placement.layerId === page.activeLayerId || placement.id === selectedId}
                 panMode={panMode}
+                isBeingDragged={dragPointer !== null && moveState.current?.placementId === placement.id}
                 draftOffset={placement.id === selectedId ? draftOffset : null}
                 onSelect={(e) => {
                   e.stopPropagation();
@@ -488,6 +521,31 @@ export function BinderPageView({ page, selectedId, onSelectedIdChange: setSelect
           )}
         </div>
       </div>
+
+      {dragPointer && draggedPlacement && (
+        <div
+          className="fixed z-50 pointer-events-none rounded-md shadow-2xl ring-2 ring-primary overflow-hidden"
+          style={{
+            left: dragPointer.x - (moveState.current?.pointerOffset.x ?? 0),
+            top: dragPointer.y - (moveState.current?.pointerOffset.y ?? 0),
+            width: draggedSpanWidthPx,
+            height: draggedSpanHeightPx,
+            opacity: 0.9,
+            transform: 'scale(1.04) rotate(-1.5deg)',
+          }}
+        >
+          <img
+            src={
+              draggedPlacement.source.kind === 'upload'
+                ? draggedPlacement.source.dataUrl
+                : draggedPlacement.source.url
+            }
+            alt=""
+            className={cn('w-full h-full', draggedPlacement.fitMode === 'fill' ? 'object-fill' : 'object-cover')}
+            draggable={false}
+          />
+        </div>
+      )}
 
       {dialogRect && (
         <ImageAssignDialog

@@ -26,6 +26,8 @@ interface Props {
    * cell instead of moving the whole placement to a new slot.
    */
   panMode: boolean;
+  /** True while this placement is being drag-moved — its floating preview is shown instead, so the in-grid tile fades out. */
+  isBeingDragged: boolean;
   /** Uncommitted pan offset while a pan drag is in progress (or awaiting confirm/cancel). */
   draftOffset: { x: number; y: number } | null;
   onSelect: (e: React.PointerEvent) => void;
@@ -43,6 +45,7 @@ export function PlacementView({
   hiddenCells,
   interactive,
   panMode,
+  isBeingDragged,
   draftOffset,
   onSelect,
   onPanDrag,
@@ -184,13 +187,14 @@ export function PlacementView({
   return (
     <div
       ref={containerRef}
-      className="relative grid"
+      className="relative grid transition-opacity"
       style={{
         gridRow: `${placement.rect.rowStart + 1} / ${placement.rect.rowEnd + 2}`,
         gridColumn: `${placement.rect.colStart + 1} / ${placement.rect.colEnd + 2}`,
         gridTemplateColumns: `repeat(${spanCols}, ${cardWidthPx}px)`,
         gridTemplateRows: `repeat(${spanRows}, ${cardHeightPx}px)`,
         gap: placement.combined ? 0 : gapPx,
+        opacity: isBeingDragged ? 0.25 : 1,
       }}
       onPointerDown={onImagePointerDown}
       onPointerMove={onImagePointerMove}
