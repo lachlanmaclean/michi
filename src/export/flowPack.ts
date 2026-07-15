@@ -14,26 +14,28 @@ export interface FlowItem {
   col: number;
 }
 
+/** A unit to be packed: either a single card-sized cell, or a combined 2-cell seamless block that must land on two adjacent print cells together. */
+interface PackUnit {
+  placement: ImagePlacement;
+  spanCols: number;
+  spanRows: number;
+  sourceColOffset: number;
+  sourceRowOffset: number;
+}
+
 /**
- * Prints each binder page at its exact on-screen grid position — cell
- * (row, col) in the editor always lands at print-grid position (row, col)
- * on its printed page, so a card placed on a layer above another placement
- * prints in that exact physical spot rather than being repacked elsewhere.
- * This is required for layering to make sense on paper (see
- * computeWinnerMap): the whole point of stacking a card over part of a
- * full-art placement is that it prints in that one physical position.
+ * Packs every visible image tightly across the fewest print pages possible,
+ * in placement order, ignoring the binder editor's own blank/empty cells —
+ * the editor grid is purely an organizing view; cutting apart printed cards
+ * means their position on paper doesn't need to match where they sat in the
+ * binder, and leaving blank gaps for empty pockets would waste paper.
  *
- * Each binder page always starts on its own fresh print page (no packing
- * leftover space from one binder page with cards from the next) — pages
- * with lots of empty pockets will have visible blank gaps in the PDF rather
- * than being tightly bin-packed to save paper. That's an intentional
- * trade-off for correct, predictable positions.
- *
- * A binder page bigger than a whole print page (more columns/rows than fit
- * on one page at true card size) is tiled across multiple dedicated pages —
- * e.g. a 4-wide grid on a 3-wide print page prints columns 0-2 on one page
- * and column 3 alone on the next (same rows) — rather than being cut off
- * past the page edge or shrunk down from true card size.
+ * A combined 1x2/2x1 seamless block is packed as a single unit so its art
+ * stays connected across the cut line; everything else packs as individual
+ * 1x1 cards. A print page bigger than the combined block's footprint always
+ * has room for one — an oversized single placement (spanning more cells
+ * than fit on one print page) is packed as-is and will be cut off by the
+ * page's print grid, same as before.
  */
 export function flowPackPlacements(
   binder: Binder,
@@ -41,58 +43,95 @@ export function flowPackPlacements(
   printRows: number,
   includePokemonCards: boolean
 ): FlowItem[] {
-  const items: FlowItem[] = [];
-  let printPageIndex = 0;
-
+  const units: PackUnit[] = [];
   for (const page of binder.pages) {
-    const pageItems = flowPackPage(page, printCols, printRows, includePokemonCards);
-    if (pageItems.length === 0) continue; // skip pages with no visible content — no blank page reserved
+    units.push(...collectVisibleUnits(page, includePokemonCards));
+  }
 
-    const pageColsNeeded = Math.max(1, Math.ceil(page.gridConfig.cols / printCols));
-    const pageRowsNeeded = Math.max(1, Math.ceil(page.gridConfig.rows / printRows));
-    for (const item of pageItems) {
-      items.push({ ...item, printPageIndex: item.printPageIndex + printPageIndex });
+  const items: FlowItem[] = [];
+  const perPage = printCols * printRows;
+  // occupied[printPageIndex] is a Set of "row,col" cells already claimed on that page.
+  const occupied: Set<string>[] = [];
+  let cursorPage = 0;
+  let cursorCell = 0; // next candidate cell index (row-major) to try on cursorPage
+
+  function occupiedSetFor(pageIndex: number): Set<string> {
+    while (occupied.length <= pageIndex) occupied.push(new Set());
+    return occupied[pageIndex];
+  }
+
+  function cellFree(pageIndex: number, row: number, col: number): boolean {
+    return row < printRows && col < printCols && !occupiedSetFor(pageIndex).has(`${row},${col}`);
+  }
+
+  function claim(pageIndex: number, row: number, col: number) {
+    occupiedSetFor(pageIndex).add(`${row},${col}`);
+  }
+
+  // Advances the shared cursor to the next free single cell, starting from
+  // where it left off — cheap because cursorCell only ever moves forward.
+  function nextFreeCell(): { pageIndex: number; row: number; col: number } {
+    for (;;) {
+      if (cursorCell >= perPage) {
+        cursorCell = 0;
+        cursorPage++;
+        continue;
+      }
+      const row = Math.floor(cursorCell / printCols);
+      const col = cursorCell % printCols;
+      if (cellFree(cursorPage, row, col)) return { pageIndex: cursorPage, row, col };
+      cursorCell++;
     }
-    printPageIndex += pageColsNeeded * pageRowsNeeded;
+  }
+
+  for (const unit of units) {
+    if (unit.spanCols === 1 && unit.spanRows === 1) {
+      const { pageIndex, row, col } = nextFreeCell();
+      claim(pageIndex, row, col);
+      items.push({ placement: unit.placement, spanCols: 1, spanRows: 1, sourceColOffset: unit.sourceColOffset, sourceRowOffset: unit.sourceRowOffset, printPageIndex: pageIndex, row, col });
+      continue;
+    }
+
+    // Combined 2-cell block: scan forward for the first page/position where
+    // both of its cells are free and it doesn't run off the page edge,
+    // without disturbing cells already claimed by earlier 1x1 units. If the
+    // print page is smaller than the block itself (pathologically tiny
+    // page size), it can never fit — drop it rather than loop forever.
+    if (unit.spanRows > printRows || unit.spanCols > printCols) continue;
+
+    let placed = false;
+    for (let pageIndex = cursorPage; !placed; pageIndex++) {
+      for (let row = 0; row < printRows && !placed; row++) {
+        for (let col = 0; col < printCols && !placed; col++) {
+          const row2 = row + unit.spanRows - 1;
+          const col2 = col + unit.spanCols - 1;
+          if (row2 >= printRows || col2 >= printCols) continue;
+          if (!cellFree(pageIndex, row, col) || !cellFree(pageIndex, row2, col2)) continue;
+          claim(pageIndex, row, col);
+          claim(pageIndex, row2, col2);
+          items.push({ placement: unit.placement, spanCols: unit.spanCols, spanRows: unit.spanRows, sourceColOffset: 0, sourceRowOffset: 0, printPageIndex: pageIndex, row, col });
+          placed = true;
+        }
+      }
+    }
   }
 
   return items;
 }
 
-/** Flow-packs a single binder page's placements, with printPageIndex relative to 0 for this page's own tiles. */
-function flowPackPage(
-  page: BinderPage,
-  printCols: number,
-  printRows: number,
-  includePokemonCards: boolean
-): FlowItem[] {
-  const items: FlowItem[] = [];
+/** Collects every visible unit on one binder page (combined blocks kept as 2-cell units, everything else exploded to 1x1), in placement order. */
+function collectVisibleUnits(page: BinderPage, includePokemonCards: boolean): PackUnit[] {
+  const units: PackUnit[] = [];
   const winner = computeWinnerMap(page);
   const isCellVisible = (placement: ImagePlacement, row: number, col: number) =>
     winner.get(`${row},${col}`) === placement.id;
 
   const placements = page.placements.filter((p) => includePokemonCards || p.source.kind !== 'url');
-  const pageColsNeeded = Math.max(1, Math.ceil(page.gridConfig.cols / printCols));
-
-  // Which dedicated print page (relative to this binder page's own first
-  // tile) a given editor-grid (row, col) belongs to, and its position
-  // within that print page's own top-left origin.
-  function chunkFor(row: number, col: number) {
-    const pr = Math.floor(row / printRows);
-    const pc = Math.floor(col / printCols);
-    return {
-      chunkPageIndex: pr * pageColsNeeded + pc,
-      chunkRow: row - pr * printRows,
-      chunkCol: col - pc * printCols,
-    };
-  }
 
   for (const placement of placements) {
     if (placement.combined) {
-      // A seamless combined tile can't print "half" of itself — only draw
-      // it if a higher layer covers none of its cells, and only if it
-      // doesn't straddle a print-page tiling boundary (it's exactly
-      // 1x2/2x1, so this only matters right at a chunk edge).
+      // A seamless combined tile can't print "half" of itself — only pack
+      // it if no higher layer covers any of its cells.
       let fullyVisible = true;
       for (let r = placement.rect.rowStart; r <= placement.rect.rowEnd && fullyVisible; r++) {
         for (let c = placement.rect.colStart; c <= placement.rect.colEnd; c++) {
@@ -104,19 +143,12 @@ function flowPackPage(
       }
       if (!fullyVisible) continue;
 
-      const start = chunkFor(placement.rect.rowStart, placement.rect.colStart);
-      const end = chunkFor(placement.rect.rowEnd, placement.rect.colEnd);
-      if (start.chunkPageIndex !== end.chunkPageIndex) continue; // straddles a page tile boundary — drop rather than corrupt
-
-      items.push({
+      units.push({
         placement,
         spanCols: placement.rect.colEnd - placement.rect.colStart + 1,
         spanRows: placement.rect.rowEnd - placement.rect.rowStart + 1,
         sourceColOffset: 0,
         sourceRowOffset: 0,
-        printPageIndex: start.chunkPageIndex,
-        row: start.chunkRow,
-        col: start.chunkCol,
       });
       continue;
     }
@@ -124,22 +156,18 @@ function flowPackPage(
     for (let row = placement.rect.rowStart; row <= placement.rect.rowEnd; row++) {
       for (let col = placement.rect.colStart; col <= placement.rect.colEnd; col++) {
         if (!isCellVisible(placement, row, col)) continue;
-        const { chunkPageIndex, chunkRow, chunkCol } = chunkFor(row, col);
-        items.push({
+        units.push({
           placement,
           spanCols: 1,
           spanRows: 1,
           sourceColOffset: col - placement.rect.colStart,
           sourceRowOffset: row - placement.rect.rowStart,
-          printPageIndex: chunkPageIndex,
-          row: chunkRow,
-          col: chunkCol,
         });
       }
     }
   }
 
-  return items;
+  return units;
 }
 
 export function countPrintPages(items: FlowItem[]): number {
