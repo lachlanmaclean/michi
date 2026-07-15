@@ -555,7 +555,7 @@ export function BinderPageView({ page, selectedId, onSelectedIdChange: setSelect
 
           {dragPointer && dropTargetRect && (
             <div
-              className="relative z-20 rounded-md border-2 border-dashed border-primary/50 pointer-events-none"
+              className="relative z-20 rounded-md border-2 border-primary bg-primary/25 pointer-events-none"
               style={{
                 gridRow: `${dropTargetRect.rowStart + 1} / ${dropTargetRect.rowEnd + 2}`,
                 gridColumn: `${dropTargetRect.colStart + 1} / ${dropTargetRect.colEnd + 2}`,
