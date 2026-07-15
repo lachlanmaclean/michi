@@ -186,7 +186,14 @@ export function parseCardQuery(raw: string): ParsedCardQuery {
   return { name: nameTokens.join(' '), localId, rarity, setTotal };
 }
 
-/** Finds a set whose printed total card count matches, for auto-resolving a set from a "170/165"-style query when no set filter is already selected. */
-export function findSetByCardCount(sets: TcgdexSetBrief[], total: number): TcgdexSetBrief | null {
-  return sets.find((s) => s.cardCount.official === total || s.cardCount.total === total) ?? null;
+/**
+ * Finds every set whose printed total card count matches, for auto-resolving
+ * a set from a "170/165"-style query when no set filter is already selected.
+ * Card counts collide often enough across eras/reprints (multiple real sets
+ * can share the same total) that this can't assume a single match — the
+ * caller must disambiguate further (e.g. by also matching the card name),
+ * not just take the first result.
+ */
+export function findSetsByCardCount(sets: TcgdexSetBrief[], total: number): TcgdexSetBrief[] {
+  return sets.filter((s) => s.cardCount.official === total || s.cardCount.total === total);
 }

@@ -7,7 +7,7 @@ import {
   tcgdexImageUrl,
   tcgdexThumbnailUrl,
   parseCardQuery,
-  findSetByCardCount,
+  findSetsByCardCount,
   fetchTcgdexSets,
   type TcgdexCardBrief,
 } from '@/utils/tcgdex';
@@ -65,21 +65,41 @@ export function ImageAssignDialog({ rect, existingPlacement, onConfirm, onRemove
         const parsed = parseCardQuery(query);
         // A "170/165"-style set total only resolves a set when the user
         // hasn't already picked one in the sidebar filter — an explicit
-        // filter always wins.
-        let setId = state.searchSetId ?? undefined;
-        if (!setId && parsed.setTotal) {
+        // filter always wins. Card counts collide across sets often enough
+        // (multiple real sets can share the same total) that this can't
+        // assume a single match: query every candidate set in parallel and
+        // merge, so the card name (already part of the query) is what
+        // actually disambiguates which one the user meant.
+        let cards: TcgdexCardBrief[];
+        if (!state.searchSetId && parsed.setTotal) {
           const sets = await fetchTcgdexSets();
-          setId = findSetByCardCount(sets, parsed.setTotal)?.id;
-        }
-        const cards = (
-          await searchTcgdexCards(
+          const candidates = findSetsByCardCount(sets, parsed.setTotal);
+          const batches = await Promise.all(
+            candidates.map((set) =>
+              searchTcgdexCards(parsed.name, set.id, state.searchFullArtOnly, parsed.localId, parsed.rarity).catch(
+                () => []
+              )
+            )
+          );
+          const seen = new Set<string>();
+          cards = [];
+          for (const batch of batches) {
+            for (const card of batch) {
+              if (seen.has(card.id)) continue;
+              seen.add(card.id);
+              cards.push(card);
+            }
+          }
+        } else {
+          cards = await searchTcgdexCards(
             parsed.name,
-            setId,
+            state.searchSetId ?? undefined,
             state.searchFullArtOnly,
             parsed.localId,
             parsed.rarity
-          )
-        ).filter((c) => tcgdexImageUrl(c));
+          );
+        }
+        cards = cards.filter((c) => tcgdexImageUrl(c));
         // Exactly one match — skip the preview/Assign step and place it
         // immediately, closing the dialog.
         if (cards.length === 1) {
