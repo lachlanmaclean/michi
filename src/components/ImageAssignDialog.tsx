@@ -213,28 +213,28 @@ export function ImageAssignDialog({ rect, existingPlacement, onConfirm, onRemove
               )}
 
               {!searching && results.length > 0 && (
-                <div className="grid grid-cols-3 gap-4 max-h-[60vh] overflow-y-auto p-1 pr-2">
+                <div className="flex flex-wrap gap-4 max-h-[480px] overflow-y-auto p-1 pr-2">
                   {results.map((card) => (
                     <button
                       key={card.id}
                       type="button"
                       onClick={() => selectCard(card)}
                       className={cn(
-                        'block w-full rounded-md overflow-hidden border-2 transition-colors bg-muted',
+                        'block w-[calc((100%-2rem)/3)] shrink-0 rounded-md overflow-hidden border-2 transition-colors bg-muted',
                         selectedCardId === card.id
                           ? 'border-primary'
                           : 'border-transparent hover:border-primary/60'
                       )}
                       title={card.name}
                     >
-                      <div className="relative w-full" style={{ aspectRatio: '2.5 / 3.5' }}>
-                        <img
-                          src={tcgdexImageUrl(card) ?? tcgdexThumbnailUrl(card)!}
-                          alt={card.name}
-                          className="absolute inset-0 w-full h-full object-contain"
-                          loading="lazy"
-                        />
-                      </div>
+                      <img
+                        src={tcgdexThumbnailUrl(card) ?? tcgdexImageUrl(card)!}
+                        alt={card.name}
+                        width={245}
+                        height={337}
+                        className="block w-full h-auto"
+                        loading="lazy"
+                      />
                     </button>
                   ))}
                 </div>
