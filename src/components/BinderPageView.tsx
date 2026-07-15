@@ -192,6 +192,26 @@ export function BinderPageView({ page, selectedId, onSelectedIdChange: setSelect
       return;
     }
     if (moveState.current) {
+      const { placementId } = moveState.current;
+      const placement = page.placements.find((p) => p.id === placementId);
+      // Dropping onto a slot occupied by exactly one same-shape placement
+      // (fully covering the hovered target, not just partially overlapping
+      // it) swaps the two — an explicit confirm action on release, not
+      // something that happens just from hovering over another card.
+      if (placement && dropTargetRect) {
+        const blockers = page.placements.filter(
+          (p) => p.id !== placement.id && p.layerId === placement.layerId && rectsOverlap(p.rect, dropTargetRect)
+        );
+        const [blocker] = blockers;
+        const isCleanSwap =
+          blockers.length === 1 &&
+          sameRectShape(blocker.rect, dropTargetRect) &&
+          blocker.rect.rowStart === dropTargetRect.rowStart &&
+          blocker.rect.colStart === dropTargetRect.colStart;
+        if (isCleanSwap) {
+          dispatch({ type: 'SWAP_PLACEMENTS', pageId: page.id, placementId: placement.id, otherPlacementId: blocker.id });
+        }
+      }
       moveState.current = null;
       setDragPointer(null);
       setDropTargetRect(null);
@@ -259,31 +279,16 @@ export function BinderPageView({ page, selectedId, onSelectedIdChange: setSelect
 
     if (deltaRow === 0 && deltaCol === 0) return;
 
-    const blockers = page.placements.filter(
+    // While dragging, an occupied target just blocks the live move (the
+    // dragged card stays at its last valid position) — swapping only
+    // happens on drop, as an explicit confirm, not merely from hovering
+    // over another card. See onGridPointerUp.
+    const overlapsOther = page.placements.some(
       (p) => p.id !== placement.id && p.layerId === placement.layerId && rectsOverlap(p.rect, nextRect)
     );
-    if (blockers.length === 0) {
-      dispatch({ type: 'RESIZE_PLACEMENT', pageId: page.id, placementId: placement.id, rect: nextRect });
-      return;
-    }
-    // Hovering the dragged card fully over exactly one same-shape occupied
-    // slot swaps the two — live, as soon as the hover lands there, not just
-    // on drop. Anything else (multiple blockers, a different-shaped
-    // occupant, or only a partial overlap) just blocks the move, same as
-    // before.
-    const [blocker] = blockers;
-    const isCleanSwap =
-      blockers.length === 1 &&
-      sameRectShape(blocker.rect, nextRect) &&
-      blocker.rect.rowStart === nextRect.rowStart &&
-      blocker.rect.colStart === nextRect.colStart;
-    if (!isCleanSwap) return;
+    if (overlapsOther) return;
 
-    dispatch({ type: 'SWAP_PLACEMENTS', pageId: page.id, placementId: placement.id, otherPlacementId: blocker.id });
-    // The dragged placement's own "original position" for future hover
-    // deltas is now wherever it just landed — otherwise the next frame's
-    // delta math would be computed against a rect it no longer occupies.
-    moveState.current = { ...ms, originalRect: nextRect, anchorCell: cell };
+    dispatch({ type: 'RESIZE_PLACEMENT', pageId: page.id, placementId: placement.id, rect: nextRect });
   }
 
   function onResizeStart(placementId: string, handle: ResizeHandle, e: React.PointerEvent) {
