@@ -3,6 +3,7 @@ import { useAppState } from '@/state/AppStateContext';
 import type { PageSize } from '@/types/binder';
 import { PAGE_SIZES_PT } from '@/export/pdfMath';
 import { exportBinderToPdf, downloadPdf, describeOversizedPlacements, type ExportError } from '@/export/pdfExport';
+import { recordExportTally } from '@/utils/exportTally';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
@@ -63,6 +64,9 @@ export function ExportPanel() {
       const { bytes, errors } = await exportBinderToPdf(state.binder, exportSettings);
       setErrors(errors);
       downloadPdf(bytes);
+      // A completed export still counts even if some placements failed to
+      // load — the rest of the PDF is usually still usable once cut out.
+      recordExportTally();
     } finally {
       setExporting(false);
     }

@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { LayoutGrid, Search, FileDown, Grid3x3, Sparkles, Printer, Combine, Coffee } from 'lucide-react';
 import { buttonVariants } from '@/components/ui/button';
@@ -7,6 +8,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from '@/components/ui/accordion';
+import { fetchExportTally } from '@/utils/exportTally';
 
 const FEATURES = [
   {
@@ -75,6 +77,12 @@ const FAQS = [
 ];
 
 export function LandingPage() {
+  const [exportCount, setExportCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    fetchExportTally().then(setExportCount);
+  }, []);
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <header className="flex items-center gap-2 border-b border-border px-6 py-4">
@@ -214,6 +222,9 @@ export function LandingPage() {
       <footer className="border-t border-border px-6 py-6 text-center text-xs text-muted-foreground">
         Not affiliated with, endorsed, sponsored, or specifically approved by The Pokémon Company,
         Nintendo, or Game Freak. All card images belong to their respective owners.
+        {exportCount !== null && (
+          <p className="mt-2 opacity-60">{exportCount.toLocaleString()} binders exported to date</p>
+        )}
       </footer>
     </div>
   );
